@@ -68,6 +68,7 @@ const initialProducts = [
   '光泉全脂鮮乳'
 ];
 
+// 預設異常原因
 const initialAbnormalReasons = [
   '商品外包裝嚴重破損',
   '實際到貨數量短少',
@@ -83,10 +84,9 @@ export default function App() {
   const [usersDb, setUsersDb] = useState([]);
   const [ordersDb, setOrdersDb] = useState([]);
   const [inventoryDb, setInventoryDb] = useState({});
-  const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts }); 
+  const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons }); 
   
   const [expiryRecords, setExpiryRecords] = useState([]);
-  const [abnormalReasons, setAbnormalReasons] = useState(initialAbnormalReasons);
   
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('login');
@@ -104,8 +104,9 @@ export default function App() {
   const showAlert = (msg) => setUiState(prev => ({ ...prev, alert: msg }));
   const showConfirm = (msg, onConfirm) => setUiState(prev => ({ ...prev, confirm: { message: msg, onConfirm } }));
 
-  // 取出雲端同步的即期商品清單
+  // 取出雲端同步的系統設定
   const trackingProducts = systemOptions?.trackingProducts || initialProducts;
+  const dynamicAbnormalReasons = systemOptions?.abnormalReasons || initialAbnormalReasons;
 
   // ==========================================
   //  連線 Firebase 並即時監聽資料
@@ -136,9 +137,12 @@ export default function App() {
     
     const unsubOptions = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), (snap) => {
       if (snap.exists()) {
-        setSystemOptions(snap.data());
+        const data = snap.data();
+        // 確保舊資料也有異常原因設定
+        if (!data.abnormalReasons) data.abnormalReasons = initialAbnormalReasons;
+        setSystemOptions(data);
       } else {
-        const initOpts = { categories: [], units: ['件', '箱', '包', '公斤', '台斤', '盒'], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts };
+        const initOpts = { categories: [], units: ['件', '箱', '包', '公斤', '台斤', '盒'], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons };
         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), initOpts);
         setSystemOptions(initOpts);
       }
@@ -238,10 +242,17 @@ export default function App() {
   const handleSubmitAbnormalCloud = async (orderId, reportForm) => {
     try {
       const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_orders', orderId);
-      await updateDoc(orderRef, { status: 'abnormal', abnormalReason: reportForm.reason, abnormalItem: reportForm.item, abnormalTime: Date.now() });
-      showAlert('已將異常通報上傳至雲端！');
+      await updateDoc(orderRef, { 
+        status: 'abnormal', 
+        abnormalReason: reportForm.reason, 
+        abnormalItem: reportForm.item, 
+        abnormalPhoto: reportForm.photo || null, // 儲存照片
+        abnormalTime: Date.now() 
+      });
+      showAlert('已將異常通報及照片上傳至總部雲端！');
     } catch(err) {
       console.error(err);
+      showAlert('通報失敗，請確認網路連線！');
     }
   };
 
@@ -405,14 +416,14 @@ export default function App() {
           {/* 門市端視圖 */}
           {currentView === 'store_dashboard' && <StoreDashboard currentUser={currentUser} vendors={dynamicVendors} orders={ordersDb} onSelectVendor={(v) => { setSelectedVendor(v); setCurrentView('store_vendor_detail'); }} />}
           {currentView === 'store_expiry' && <StoreExpiryTracker currentUser={currentUser} products={trackingProducts} expiryRecords={expiryRecords} setExpiryRecords={setExpiryRecords} />}
-          {currentView === 'store_vendor_detail' && <StoreVendorDetail currentUser={currentUser} vendor={selectedVendor} orders={ordersDb} abnormalReasons={abnormalReasons} onVerifySuccess={handleVerifySuccess} onSubmitAbnormal={handleSubmitAbnormalCloud} onBack={() => { setSelectedVendor(null); setCurrentView('store_dashboard'); }} />}
+          {currentView === 'store_vendor_detail' && <StoreVendorDetail currentUser={currentUser} vendor={selectedVendor} orders={ordersDb} abnormalReasons={dynamicAbnormalReasons} onVerifySuccess={handleVerifySuccess} onSubmitAbnormal={handleSubmitAbnormalCloud} onBack={() => { setSelectedVendor(null); setCurrentView('store_dashboard'); }} />}
 
           {/* 總部端視圖切換 */}
           {currentView === 'admin_vendors' && <AdminVendorOverview orders={ordersDb} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
           {currentView === 'admin_dashboard' && <AdminDashboard users={usersDb} vendors={dynamicVendors} orders={ordersDb} products={trackingProducts} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
-          {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} />}
+          {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} />}
 
         </main>
         
@@ -441,15 +452,21 @@ export default function App() {
 }
 
 // ==========================================
-// 總部設定：商品進貨單位管理 & 效期追蹤商品管理
+// 總部設定：商品進貨單位管理 & 效期追蹤商品管理 & 異常原因管理
 // ==========================================
-function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBack, initialProducts }) {
+function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBack, initialProducts, initialAbnormalReasons }) {
   const [newUnitInput, setNewUnitInput] = useState('');
+  
   const [newProductInput, setNewProductInput] = useState('');
   const [editingProduct, setEditingProduct] = useState(null);
   const [editProductValue, setEditProductValue] = useState('');
 
+  const [newReasonInput, setNewReasonInput] = useState('');
+  const [editingReason, setEditingReason] = useState(null);
+  const [editReasonValue, setEditReasonValue] = useState('');
+
   const trackingProducts = systemOptions?.trackingProducts || initialProducts;
+  const abnormalReasons = systemOptions?.abnormalReasons || initialAbnormalReasons;
   
   const handleAddUnit = async () => {
     const val = newUnitInput.trim();
@@ -507,6 +524,37 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
     } catch(e) { showAlert('修改商品名稱失敗'); }
   };
 
+  // 異常原因管理功能
+  const handleAddReason = async () => {
+    const val = newReasonInput.trim();
+    if(!val) return;
+    if(abnormalReasons.includes(val)) { showAlert('此原因已存在清單中'); return; }
+    const updatedOptions = { ...systemOptions, abnormalReasons: [...abnormalReasons, val] };
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), updatedOptions, { merge: true });
+      setNewReasonInput('');
+    } catch (e) { showAlert('新增原因失敗'); }
+  };
+
+  const handleRemoveReason = (rToRemove) => {
+    showConfirm(`確定要刪除「${rToRemove}」嗎？`, async () => {
+      const updatedOptions = { ...systemOptions, abnormalReasons: abnormalReasons.filter(r => r !== rToRemove) };
+      try {
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), updatedOptions, { merge: true });
+      } catch (e) { showAlert('刪除原因失敗'); }
+    });
+  };
+
+  const handleSaveEditReason = async (oldReason) => {
+    const val = editReasonValue.trim();
+    if (!val || val === oldReason) { setEditingReason(null); return; }
+    const updatedReasons = abnormalReasons.map(r => r === oldReason ? val : r);
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), { ...systemOptions, abnormalReasons: updatedReasons }, { merge: true });
+      setEditingReason(null);
+    } catch(e) { showAlert('修改異常原因失敗'); }
+  };
+
   return (
     <div className="animate-in slide-in-from-right-8 duration-500">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -519,6 +567,44 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
         </button>
       </div>
 
+      {/* 異常通報原因管理 (新卡片) */}
+      <div className="bg-[#FFFFFF] rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent p-7 mb-8">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="p-3 bg-[#FEF2F2] rounded-xl"><AlertTriangle className="text-[#EF4444]" size={24} /></div>
+          <div>
+            <h3 className="font-black text-[#1A1D21] text-xl">異常通報原因管理</h3>
+            <p className="text-sm font-bold text-[#6B7280] mt-1">設定門市端「回報異常狀況」的下拉選單內容</p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <input type="text" value={newReasonInput} onChange={(e) => setNewReasonInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddReason()} placeholder="新增異常原因，例如：包裝破損、數量不符..." className="flex-1 px-5 py-3.5 bg-[#FFFFFF] border border-[#E5E8EB] rounded-xl focus:ring-2 focus:ring-[#EF4444] outline-none font-bold text-[#1A1D21] shadow-inner" />
+          <button onClick={handleAddReason} className="px-6 py-3.5 bg-[#EF4444] text-white font-bold rounded-xl hover:bg-[#DC2626] transition-colors shadow-sm active:scale-95 whitespace-nowrap">新增原因</button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {abnormalReasons.map((r, i) => (
+            <div key={i} className="bg-[#FFFFFF] border border-[#E5E8EB] px-5 py-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3 transition-colors hover:border-[#EF4444]/30">
+              {editingReason === r ? (
+                <div className="flex items-center gap-3 w-full">
+                   <input autoFocus value={editReasonValue} onChange={e => setEditReasonValue(e.target.value)} className="flex-1 px-4 py-2 bg-[#FEF2F2]/50 border border-[#FECACA] focus:ring-2 focus:ring-[#EF4444] rounded-lg outline-none font-bold text-[#991B1B] shadow-inner" />
+                   <button onClick={() => handleSaveEditReason(r)} className="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold text-sm shadow-sm transition-colors whitespace-nowrap">儲存</button>
+                   <button onClick={() => setEditingReason(null)} className="px-4 py-2 bg-[#E5E8EB] hover:bg-[#D1D5DB] text-[#1A1D21] rounded-lg font-bold text-sm transition-colors whitespace-nowrap">取消</button>
+                </div>
+              ) : (
+                <>
+                  <span className="font-bold text-[#1A1D21] text-lg">{r}</span>
+                  <div className="flex items-center gap-2 justify-end">
+                    <button onClick={() => { setEditingReason(r); setEditReasonValue(r); }} className="p-2.5 bg-[#F2F4F7] text-[#6B7280] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors shadow-sm" title="編輯原因"><Edit2 size={18} /></button>
+                    <button onClick={() => handleRemoveReason(r)} className="p-2.5 bg-[#F2F4F7] text-[#6B7280] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors shadow-sm" title="刪除原因"><Trash2 size={18} /></button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          {abnormalReasons.length === 0 && <span className="text-[#6B7280] text-sm font-bold mt-2 text-center py-6 border-2 border-dashed border-[#E5E8EB] rounded-xl">目前尚無異常原因選單</span>}
+        </div>
+      </div>
+
+      {/* 原本的：商品進貨單位管理 */}
       <div className="bg-[#FFFFFF] rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent p-7 mb-8">
         <div className="flex items-center gap-4 mb-6">
           <div className="p-3 bg-[#F2F4F7] rounded-xl"><Package className="text-[#2C3137]" size={24} /></div>
@@ -545,6 +631,7 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
         </div>
       </div>
 
+      {/* 原本的：效期追蹤商品管理 */}
       <div className="bg-[#FFFFFF] rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent p-7 mb-8">
         <div className="flex items-center gap-4 mb-6">
           <div className="p-3 bg-[#FFFBEB] rounded-xl"><CalendarDays className="text-[#F59E0B]" size={24} /></div>
@@ -689,7 +776,7 @@ function StoreExpiryTracker({ currentUser, products, expiryRecords, setExpiryRec
 }
 
 // ==========================================
-// 前臺：單據核對頁面
+// 前臺：單據核對頁面 (新增拍照自動壓縮功能)
 // ==========================================
 function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVerifySuccess, onSubmitAbnormal, onBack }) {
   const vendorOrders = useMemo(() => {
@@ -697,7 +784,34 @@ function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVer
   }, [currentUser, vendor, orders]);
 
   const [reportingOrderId, setReportingOrderId] = useState(null);
-  const [reportForm, setReportForm] = useState({ item: '', reason: '' });
+  const [reportForm, setReportForm] = useState({ item: '', reason: '', photo: null });
+
+  // 拍照自動化壓縮技術：防止記憶體爆滿
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // 限制最大寬度為 800px (非常省空間)
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // 將圖片壓縮成 JPEG 格式，品質設定為 0.7，大幅降低檔案大小
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        setReportForm(prev => ({ ...prev, photo: compressedBase64 }));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div className="animate-in slide-in-from-right-8 fade-in duration-500">
@@ -734,19 +848,43 @@ function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVer
               </div>
             ) : reportingOrderId !== order.id ? (
               <div className="bg-[#F2F4F7]/60 px-8 py-5 border-t-2 border-[#E5E8EB] flex gap-4">
-                <button onClick={() => { setReportingOrderId(order.id); setReportForm({ item: '', reason: '' }); }} className="w-1/3 flex items-center justify-center gap-2 py-3.5 rounded-[1.25rem] text-[#EF4444] border-2 border-[#EF4444]/20 bg-white hover:bg-[#FEF2F2] font-black active:scale-95"><AlertTriangle size={20} /> 異常</button>
-                <button onClick={() => handleVerifySuccess(order.id)} className="w-2/3 flex items-center justify-center gap-2 py-3.5 rounded-[1.25rem] bg-[#10B981] text-white hover:bg-[#059669] font-black active:scale-95 shadow-md"><CheckCircle2 size={20} /> 核對無誤，同步庫存</button>
+                <button onClick={() => { setReportingOrderId(order.id); setReportForm({ item: '', reason: '', photo: null }); }} className="w-1/3 flex items-center justify-center gap-2 py-3.5 rounded-[1.25rem] text-[#EF4444] border-2 border-[#EF4444]/20 bg-white hover:bg-[#FEF2F2] font-black active:scale-95"><AlertTriangle size={20} /> 異常</button>
+                <button onClick={() => onVerifySuccess(order.id)} className="w-2/3 flex items-center justify-center gap-2 py-3.5 rounded-[1.25rem] bg-[#10B981] text-white hover:bg-[#059669] font-black active:scale-95 shadow-md"><CheckCircle2 size={20} /> 核對無誤，同步庫存</button>
               </div>
             ) : (
               <div className="bg-[#FEF2F2] px-8 py-6 border-t-[3px] border-[#FECACA]">
                 <h4 className="font-black text-[#991B1B] mb-5 flex items-center gap-2"><AlertTriangle size={20} /> 回報異常狀況</h4>
+                
                 <div className="space-y-4">
                   <select value={reportForm.item} onChange={(e) => setReportForm({...reportForm, item: e.target.value})} className="w-full bg-white border border-[#FECACA] rounded-2xl px-4 py-3 font-bold text-[#991B1B]"><option value="" disabled>請選擇異常商品...</option>{order.items.map(i => <option key={i.name} value={i.name}>{i.name}</option>)}</select>
                   <select value={reportForm.reason} onChange={(e) => setReportForm({...reportForm, reason: e.target.value})} className="w-full bg-white border border-[#FECACA] rounded-2xl px-4 py-3 font-bold text-[#991B1B]"><option value="" disabled>請選擇原因...</option>{abnormalReasons.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                  
+                  {/* 新增拍照 / 上傳功能區塊 */}
+                  <div className="flex flex-col gap-3 mt-2">
+                    <label className="text-sm font-bold text-[#991B1B] flex items-center gap-2">
+                      <Camera size={18} /> 附上現場照片 (選填)
+                    </label>
+                    {reportForm.photo ? (
+                      <div className="relative inline-block self-start">
+                        <img src={reportForm.photo} alt="預覽" className="h-32 w-auto rounded-xl border-2 border-[#FECACA] object-cover shadow-sm" />
+                        <button onClick={() => setReportForm({...reportForm, photo: null})} className="absolute -top-2 -right-2 bg-[#EF4444] text-white rounded-full p-1 shadow-md hover:bg-[#DC2626] transition-colors" title="移除照片">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full sm:w-1/2 h-32 border-2 border-dashed border-[#FECACA] rounded-xl cursor-pointer hover:bg-[#FEE2E2]/80 transition-colors bg-white">
+                        <Camera size={32} className="text-[#FCA5A5] mb-2" />
+                        <span className="text-sm font-bold text-[#EF4444]">點擊拍照 / 上傳照片</span>
+                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoUpload} />
+                      </label>
+                    )}
+                  </div>
+
                 </div>
+
                 <div className="flex gap-4 mt-6">
                   <button onClick={() => setReportingOrderId(null)} className="w-1/3 py-3.5 rounded-2xl bg-white border border-[#FECACA] text-[#EF4444] font-black hover:bg-[#FEE2E2]">取消</button>
-                  <button onClick={() => { handleSubmitAbnormalCloud(order.id, reportForm); setReportingOrderId(null); }} disabled={!reportForm.item || !reportForm.reason} className="w-2/3 py-3.5 rounded-2xl bg-[#EF4444] text-white font-black disabled:bg-[#FECACA] shadow-md">送出異常通報</button>
+                  <button onClick={() => { onSubmitAbnormal(order.id, reportForm); setReportingOrderId(null); }} disabled={!reportForm.item || !reportForm.reason} className="w-2/3 py-3.5 rounded-2xl bg-[#EF4444] text-white font-black disabled:bg-[#FECACA] shadow-md">送出異常通報</button>
                 </div>
               </div>
             )}
@@ -781,7 +919,7 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
 
         <div className="space-y-6">
           {vOrders.map(order => (
-            <AdminOrderDetail key={order.id} order={order} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} />
+            <AdminOrderDetail key={order.id} order={order} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />
           ))}
           {vOrders.length === 0 && <div className="text-center py-12 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-[2rem] bg-[#FFFFFF]">目前無此廠商單據</div>}
         </div>
@@ -931,7 +1069,7 @@ function AdminDashboard({ users, vendors, orders, products, systemOptions, db, a
   
   const stores = users.filter(u => u.role !== 'admin');
   
-  if (adminView === 'store_orders') return <AdminStoreOrders store={activeStore} vendors={vendors} orders={orders} onBack={() => setAdminView('overview')} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} />;
+  if (adminView === 'store_orders') return <AdminStoreOrders store={activeStore} vendors={vendors} orders={orders} onBack={() => setAdminView('overview')} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />;
   if (adminView === 'store_passwords') return <AdminStorePasswords users={users} onBack={() => setAdminView('overview')} />;
 
   return (
@@ -1128,8 +1266,10 @@ function AdminStorePasswords({ users, onBack }) {
   );
 }
 
-//  全新升級的總部 - 特定門市視圖 (廠商直列 + 拖曳排序 + 單據列表)
-function AdminStoreOrders({ store, vendors, orders, onBack, systemOptions, db, appId, showAlert }) {
+// ==========================================
+// 總部：特定門市單據視圖
+// ==========================================
+function AdminStoreOrders({ store, vendors, orders, onBack, systemOptions, db, appId, showAlert, showConfirm }) {
   const [viewVendor, setViewVendor] = useState(null); 
   const [isSorting, setIsSorting] = useState(false); 
   const [draggedV, setDraggedV] = useState(null);
@@ -1187,8 +1327,9 @@ function AdminStoreOrders({ store, vendors, orders, onBack, systemOptions, db, a
 
         <div className="space-y-6">
           {vOrders.map(order => (
-            <AdminOrderDetail key={order.id} order={order} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} />
+            <AdminOrderDetail key={order.id} order={order} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />
           ))}
+          {vOrders.length === 0 && <div className="text-center py-12 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-[2rem] bg-[#FFFFFF]">目前無此廠商單據</div>}
         </div>
       </div>
     );
@@ -1275,7 +1416,7 @@ function AdminStoreOrders({ store, vendors, orders, onBack, systemOptions, db, a
   )
 }
 
-function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
+function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConfirm }) {
   const [updating, setUpdating] = useState(false);
 
   if (!order) return null;
@@ -1293,6 +1434,13 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
       } else if (field === 'unit') {
         if (updatedItems[itemIdx].unit === newValue) { setUpdating(false); return; }
         updatedItems[itemIdx] = { ...updatedItems[itemIdx], unit: newValue };
+      } else if (field === 'name') {
+        if (updatedItems[itemIdx].name === newValue) { setUpdating(false); return; }
+        updatedItems[itemIdx] = { ...updatedItems[itemIdx], name: newValue };
+      } else if (field === 'quantity') {
+        const qty = parseFloat(newValue) || 0;
+        if ((updatedItems[itemIdx].orderQty || updatedItems[itemIdx].quantity) === qty) { setUpdating(false); return; }
+        updatedItems[itemIdx] = { ...updatedItems[itemIdx], quantity: qty, orderQty: qty };
       }
 
       const newTotal = updatedItems.reduce((sum, it) => sum + ((it.orderQty || it.quantity || 0) * (it.price || 0)), 0);
@@ -1307,6 +1455,53 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleAddItem = async () => {
+    setUpdating(true);
+    try {
+      const newItem = { 
+        id: `M${Date.now().toString().slice(-4)}`, 
+        name: '', 
+        quantity: 1, 
+        orderQty: 1, 
+        unit: '件', 
+        price: 0 
+      };
+      const updatedItems = [...order.items, newItem];
+      const newTotal = updatedItems.reduce((sum, it) => sum + ((it.orderQty || it.quantity || 0) * (it.price || 0)), 0);
+
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_orders', order.id), {
+        items: updatedItems,
+        totalAmount: newTotal
+      });
+    } catch (error) {
+      console.error('新增失敗:', error);
+      showAlert('新增商品失敗，請確認網路連線。');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleRemoveItem = (itemIdx) => {
+    showConfirm('確定要刪除此商品嗎？', async () => {
+      setUpdating(true);
+      try {
+        const updatedItems = order.items.filter((_, idx) => idx !== itemIdx);
+        const newTotal = updatedItems.reduce((sum, it) => sum + ((it.orderQty || it.quantity || 0) * (it.price || 0)), 0);
+
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_orders', order.id), {
+          items: updatedItems,
+          totalAmount: newTotal
+        });
+        showAlert('已成功刪除商品。');
+      } catch (error) {
+        console.error('刪除失敗:', error);
+        showAlert('刪除失敗，請確認網路連線。');
+      } finally {
+        setUpdating(false);
+      }
+    });
   };
 
   const totalAmount = order.totalAmount || order.items.reduce((sum, it) => sum + ((it.orderQty || it.quantity || 0) * (it.price || 0)), 0);
@@ -1331,6 +1526,8 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
       {isAbnormal && (
          <div className="mx-6 sm:mx-8 mt-8 p-6 bg-[#FEF2F2] border-2 border-[#FECACA] rounded-[2rem]">
             <h4 className="font-black text-[#991B1B] mb-3 flex items-center gap-2"><AlertTriangle /> 門市異常通報</h4>
+            
+            {/* 顯示舊版異常記錄 (如果有) */}
             {Object.entries(order.abnormalCategories || {}).map(([cat, data]) => (
                <div key={cat} className="mb-4 last:mb-0">
                   <p className="text-sm font-bold text-[#991B1B] mb-2 bg-[#FECACA]/40 inline-block px-3 py-1 rounded-lg">分類：{cat}</p>
@@ -1338,9 +1535,18 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
                   {data.photo && <img src={data.photo} alt="異常相片" className="mt-3 w-64 rounded-xl border-[3px] border-white shadow-md" />}
                </div>
             ))}
+
+            {/* 顯示新版進貨系統通報 */}
             {order.abnormalReason && (
                <div className="mt-2">
-                  <p className="text-[#1A1D21] font-bold bg-white p-4 rounded-xl shadow-inner border border-[#FECACA] leading-relaxed">{order.abnormalReason} (異常商品：{order.abnormalItem})</p>
+                  <p className="text-[#1A1D21] font-bold bg-white p-4 rounded-xl shadow-inner border border-[#FECACA] leading-relaxed">
+                    {order.abnormalReason} (異常商品：{order.abnormalItem})
+                  </p>
+                  
+                  {/* 若有夾帶照片，則顯示照片 */}
+                  {order.abnormalPhoto && (
+                    <img src={order.abnormalPhoto} alt="門市上傳異常照片" className="mt-4 max-h-[300px] w-auto rounded-xl border-4 border-white shadow-md object-cover" />
+                  )}
                </div>
             )}
          </div>
@@ -1352,10 +1558,11 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
              <tr className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest border-b-2 border-[#F2F4F7]">
                 <th className="py-4 px-3 w-20">產品編號</th>
                 <th className="py-4 px-3"><Layers className="inline w-3.5 h-3.5 mr-1 -mt-0.5"/> 商品名稱</th>
-                <th className="py-4 px-3 text-right w-24">數量</th>
+                <th className="py-4 px-3 text-center w-28">數量</th>
                 <th className="py-4 px-3 text-left w-32">單位</th>
                 <th className="py-4 px-3 text-right w-40">進貨單價 ($)</th>
                 <th className="py-4 px-3 text-right w-32">總金額</th>
+                <th className="py-4 px-3 text-center w-16">操作</th>
              </tr>
           </thead>
           <tbody className="divide-y divide-[#F2F4F7]">
@@ -1368,9 +1575,24 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
               return (
                 <tr key={idx} className="hover:bg-[#F2F4F7]/60 transition-colors group">
                    <td className="py-5 px-3 font-mono text-[#6B7280] text-sm tracking-wider">{item.id || `P${String(idx+1).padStart(3, '0')}`}</td>
-                   <td className="py-5 px-3 font-bold text-[#1A1D21] text-[17px]">{item.name}</td>
-                   <td className="py-5 px-3 text-right">
-                      <span className="font-black text-[#F05A42] text-2xl">{qty}</span>
+                   <td className="py-5 px-3">
+                     <input
+                        type="text"
+                        defaultValue={item.name}
+                        onBlur={(e) => handleUpdateItem(idx, 'name', e.target.value)}
+                        className="w-full px-3 py-2.5 bg-white border border-[#E5E8EB] rounded-xl focus:ring-2 focus:ring-[#F05A42] outline-none font-bold text-[#1A1D21] text-[17px] shadow-inner transition-all hover:border-[#F05A42]"
+                        placeholder="請輸入名稱"
+                     />
+                   </td>
+                   <td className="py-5 px-3">
+                     <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        defaultValue={qty}
+                        onBlur={(e) => handleUpdateItem(idx, 'quantity', e.target.value)}
+                        className="w-full px-2 py-2.5 bg-white border border-[#E5E8EB] rounded-xl focus:ring-2 focus:ring-[#F05A42] outline-none text-center font-black text-[#F05A42] text-[17px] shadow-inner transition-all hover:border-[#F05A42]"
+                     />
                    </td>
                    <td className="py-5 px-3 text-left">
                       <select
@@ -1403,9 +1625,21 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert }) {
                       </div>
                    </td>
                    <td className="py-5 px-3 text-right font-black text-[#1A1D21] text-xl">${itemTotal.toLocaleString()}</td>
+                   <td className="py-5 px-3 text-center">
+                     <button onClick={() => handleRemoveItem(idx)} className="p-2 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors shadow-sm" title="刪除商品">
+                       <Trash2 size={20} />
+                     </button>
+                   </td>
                 </tr>
               );
             })}
+            <tr className="border-t-[3px] border-dashed border-[#F2F4F7] hover:bg-[#F2F4F7]/30 transition-colors">
+              <td colSpan="7" className="py-5 px-3 text-center">
+                <button onClick={handleAddItem} className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-[#F05A42] font-black hover:bg-[#FFF2F0] hover:shadow-md transition-all border-2 border-[#F05A42]/20 hover:border-[#F05A42] active:scale-95">
+                  <Plus size={20} strokeWidth={3} /> 新增一筆進貨商品
+                </button>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
