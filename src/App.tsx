@@ -40,7 +40,7 @@ import {
 // ==========================================
 //  Firebase 雲端資料庫設定
 // ==========================================
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 
@@ -54,7 +54,8 @@ const firebaseConfig = {
   measurementId: "G-MFJ8WW5707"
 };
 
-const app = initializeApp(firebaseConfig);
+// 優化：避免 React 熱重載時 Firebase 重複初始化報錯
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'hotpot-erp-system'; 
