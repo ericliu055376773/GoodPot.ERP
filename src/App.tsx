@@ -847,7 +847,18 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
     }).filter(v => v.orderCount > 0); 
   }, [vendors, storeOrders]);
 
-  const receivedOrders = useMemo(() => storeOrders.filter(o => o.status === 'received').sort((a,b) => b.timestamp - a.timestamp).slice(0, 6), [storeOrders]);
+  // 取得最近 20 筆已接收的單據，並依照廠商分類
+  const recentReceived = useMemo(() => storeOrders.filter(o => o.status === 'received').sort((a,b) => b.timestamp - a.timestamp).slice(0, 20), [storeOrders]);
+  
+  const groupedReceivedOrders = useMemo(() => {
+    const groups = {};
+    recentReceived.forEach(o => {
+      const vName = o.id.split('-')[1] || '其他分類';
+      if (!groups[vName]) groups[vName] = [];
+      groups[vName].push(o);
+    });
+    return groups;
+  }, [recentReceived]);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -891,24 +902,33 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
         </div>
       )}
 
-      {/* 新增：最近已入庫紀錄顯示，避免誤會單據消失 */}
-      {receivedOrders.length > 0 && (
+      {/* 新增：最近已入庫紀錄，並依分類小卡群組化顯示 */}
+      {Object.keys(groupedReceivedOrders).length > 0 && (
         <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
-            <CheckCircle2 className="text-[#10B981]" /> 最近已入庫紀錄
+            <CheckCircle2 className="text-[#10B981]" /> 最近已入庫紀錄 (依廠商分類)
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-             {receivedOrders.map(order => (
-               <div key={order.id} className="bg-white p-5 rounded-2xl shadow-sm border border-[#E5E8EB] flex justify-between items-center opacity-80 hover:opacity-100 transition-opacity">
-                  <div>
-                     <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-[#F2F4F7] px-2 py-1 rounded-md">{order.date}</span>
-                     <span className="font-bold text-[#1A1D21] text-lg block mt-1">{order.id.split('-')[1] || '訂單'} <span className="text-sm text-[#6B7280] font-mono">{order.id}</span></span>
-                  </div>
-                  <span className="text-sm font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-3 py-1.5 rounded-lg flex items-center gap-1">
-                    <CheckCircle2 size={14} /> 已入庫
-                  </span>
-               </div>
-             ))}
+          <div className="space-y-6">
+            {Object.entries(groupedReceivedOrders).map(([vName, vOrders]) => (
+              <div key={vName} className="bg-[#FFFFFF] p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent">
+                 <h4 className="font-black text-[#1A1D21] text-lg mb-4 flex items-center gap-2 border-b border-[#F2F4F7] pb-3">
+                   <Briefcase className="text-[#9CA3AF]" size={20} /> {vName}
+                 </h4>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                   {vOrders.map(order => (
+                     <div key={order.id} className="bg-[#F2F4F7]/50 p-4 rounded-2xl border border-[#E5E8EB] flex justify-between items-center opacity-80 hover:opacity-100 transition-opacity">
+                        <div>
+                           <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-white px-2 py-1 rounded-md shadow-sm border border-[#E5E8EB]">{order.date}</span>
+                           <span className="font-bold text-[#1A1D21] text-base block mt-1.5">{order.id}</span>
+                        </div>
+                        <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-3 py-1.5 rounded-lg flex items-center gap-1">
+                          <CheckCircle2 size={14} /> 已入庫
+                        </span>
+                     </div>
+                   ))}
+                 </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1324,13 +1344,22 @@ function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVer
 }
 
 // ==========================================
-// 總部 Tab 1：各廠商分類 (全球全店總覽)
+// 總部 Tab 1：各廠商分類 (依門店風琴式分類 + 全域總覽)
 // ==========================================
 function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId, showAlert, showConfirm }) {
-  const [activeVendor, setActiveVendor] = useState(null);
+  const [activeVendor, setActiveVendor] = useState(null); // 可為 string(全域) 或 object(特定門市)
+  const [expandedStore, setExpandedStore] = useState(null); // 控制風琴式展開的門店
+  const stores = users.filter(u => u.role !== 'admin');
   
   if (activeVendor) {
-    const vOrders = orders.filter(o => o.id.includes(`-${activeVendor}-`));
+    const isStoreSpecific = typeof activeVendor === 'object';
+    const vendorName = isStoreSpecific ? activeVendor.vendorName : activeVendor;
+    
+    let vOrders = orders.filter(o => o.id.includes(`-${vendorName}-`));
+    if (isStoreSpecific && activeVendor.storeUsername) {
+       vOrders = vOrders.filter(o => o.branchUsername === activeVendor.storeUsername || o.branchName === activeVendor.storeName);
+    }
+    
     return (
       <div className="animate-in slide-in-from-right-8 duration-500">
         <button onClick={() => setActiveVendor(null)} className="flex items-center gap-2 text-[#6B7280] font-bold hover:text-[#1A1D21] transition-colors mb-6">
@@ -1340,8 +1369,10 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
         <div className="bg-[#FFFFFF] rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent mb-10 flex items-center gap-5">
           <div className="p-4 bg-[#F2F4F7] text-[#F05A42] rounded-3xl"><Layers size={32} /></div>
           <div>
-            <h2 className="text-3xl font-black text-[#1A1D21]">{activeVendor}</h2>
-            <p className="text-[#6B7280] font-bold mt-1">來自各門市的單據：共 {vOrders.length} 筆</p>
+            <h2 className="text-3xl font-black text-[#1A1D21]">
+               {isStoreSpecific ? `${activeVendor.storeName} - ${vendorName}` : vendorName}
+            </h2>
+            <p className="text-[#6B7280] font-bold mt-1">單據明細：共 {vOrders.length} 筆</p>
           </div>
         </div>
 
@@ -1355,7 +1386,8 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
     )
   }
 
-  const vendorStats = vendors.map(v => {
+  // 計算全域(所有門店)的廠商統計資料
+  const globalVendorStats = vendors.map(v => {
     const vOrders = orders.filter(o => o.id.includes(`-${v.id}-`));
     const totalAmt = vOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
     return { ...v, orderCount: vOrders.length, totalAmount: totalAmt };
@@ -1363,34 +1395,113 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
 
   return (
     <div className="animate-in fade-in duration-500">
-      <div className="mb-8"><h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">各廠商分類總覽</h2><p className="text-[#6B7280] font-bold">全部分店皆涵蓋於此，點擊卡片可查看個別廠商的所有單據明細。</p></div>
+      <div className="mb-8">
+         <h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">各廠商分類總覽</h2>
+         <p className="text-[#6B7280] font-bold">利用下方風琴式選單分類各門店單據，或查看全域加總。</p>
+      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {vendorStats.map(vendor => (
-          <button
-            key={vendor.id}
-            onClick={() => setActiveVendor(vendor.name)}
-            className="group bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] active:scale-[0.98] transition-all duration-300 text-left flex flex-col h-full relative"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="p-4 bg-[#F2F4F7] rounded-2xl group-hover:bg-[#FFF2F0] transition-colors shadow-inner text-[#F05A42]">
-                <Layers size={28} />
-              </div>
-              <h3 className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
-            </div>
-            
-            <div className="mt-auto space-y-3 pt-4 border-t border-[#F2F4F7]">
-              <div className="flex justify-between items-center">
-                <span className="text-[#6B7280] text-xs font-bold uppercase tracking-widest">總計單據數</span>
-                <span className="text-[#1A1D21] font-black text-lg">{vendor.orderCount} 筆</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[#6B7280] text-xs font-bold uppercase tracking-widest">總計採購金額</span>
-                <span className="text-[#F05A42] font-black text-xl">${vendor.totalAmount.toLocaleString()}</span>
-              </div>
-            </div>
-          </button>
-        ))}
+      {/* 依門店分類：風琴式 UI 設計 */}
+      <div className="mb-12">
+        <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
+          <Store className="text-[#3B82F6]" /> 依門店分類檢視 (風琴式展開)
+        </h3>
+        <div className="space-y-4">
+          {stores.map(store => {
+            const isExpanded = expandedStore === store.username;
+            const storeOrders = orders.filter(o => o.branchUsername === store.username || o.branchName === store.branchName);
+            // 計算該單一門店的廠商統計資料
+            const storeVendorStats = vendors.map(v => {
+              const vOrders = storeOrders.filter(o => o.id.includes(`-${v.id}-`));
+              return { ...v, orderCount: vOrders.length, totalAmount: vOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0) };
+            }).filter(v => v.orderCount > 0);
+
+            return (
+               <div key={store.username} className={`bg-[#FFFFFF] rounded-[2rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#3B82F6]/30' : 'hover:border-[#9CA3AF]/50'}`}>
+                  <button onClick={() => setExpandedStore(isExpanded ? null : store.username)} className="w-full p-5 sm:p-6 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors">
+                     <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl transition-colors ${isExpanded ? 'bg-[#3B82F6] text-white' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                           {store.branchName.charAt(0)}
+                        </div>
+                        <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{store.branchName}</h3>
+                     </div>
+                     <div className="flex items-center gap-4">
+                        <span className={`text-sm font-bold px-3 py-1.5 rounded-lg hidden sm:block ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                           共 {storeVendorStats.length} 個分類有叫貨
+                        </span>
+                        <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                           <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
+                     </div>
+                  </button>
+                  {isExpanded && (
+                     <div className="p-5 sm:p-6 pt-0 border-t border-[#F2F4F7] bg-[#F2F4F7]/20">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-6">
+                           {storeVendorStats.map(vendor => (
+                              <button
+                                key={vendor.id}
+                                onClick={() => setActiveVendor({ vendorName: vendor.name, storeUsername: store.username, storeName: store.branchName })}
+                                className="group bg-[#FFFFFF] p-5 rounded-[1.5rem] shadow-sm border border-[#E5E8EB] hover:shadow-md hover:border-[#F05A42]/30 active:scale-[0.98] transition-all text-left flex flex-col h-full"
+                              >
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="p-3 bg-[#F2F4F7] rounded-xl group-hover:bg-[#FFF2F0] transition-colors text-[#F05A42]">
+                                    <Layers size={20} />
+                                  </div>
+                                  <h4 className="font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h4>
+                                </div>
+                                <div className="mt-auto space-y-2 pt-3 border-t border-[#F2F4F7]">
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-[#6B7280] font-bold">單據數</span>
+                                    <span className="text-[#1A1D21] font-black">{vendor.orderCount} 筆</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-[#6B7280] font-bold">採購金額</span>
+                                    <span className="text-[#F05A42] font-black">${vendor.totalAmount.toLocaleString()}</span>
+                                  </div>
+                                </div>
+                              </button>
+                           ))}
+                           {storeVendorStats.length === 0 && <div className="col-span-full text-center text-[#9CA3AF] font-bold py-8 border-2 border-dashed border-[#E5E8EB] rounded-2xl">此門市尚無單據</div>}
+                        </div>
+                     </div>
+                  )}
+               </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 全域廠商總覽 */}
+      <div>
+         <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2 border-t border-[#E5E8EB] pt-8">
+           <Layers className="text-[#F05A42]" /> 全域各廠商總覽 (包含所有分店)
+         </h3>
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+           {globalVendorStats.map(vendor => (
+             <button
+               key={vendor.id}
+               onClick={() => setActiveVendor(vendor.name)} // 字串代表全域
+               className="group bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] active:scale-[0.98] transition-all duration-300 text-left flex flex-col h-full relative"
+             >
+               <div className="flex items-center gap-4 mb-4">
+                 <div className="p-4 bg-[#F2F4F7] rounded-2xl group-hover:bg-[#FFF2F0] transition-colors shadow-inner text-[#F05A42]">
+                   <Layers size={28} />
+                 </div>
+                 <h3 className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
+               </div>
+               
+               <div className="mt-auto space-y-3 pt-4 border-t border-[#F2F4F7]">
+                 <div className="flex justify-between items-center">
+                   <span className="text-[#6B7280] text-xs font-bold uppercase tracking-widest">總計單據數</span>
+                   <span className="text-[#1A1D21] font-black text-lg">{vendor.orderCount} 筆</span>
+                 </div>
+                 <div className="flex justify-between items-center">
+                   <span className="text-[#6B7280] text-xs font-bold uppercase tracking-widest">總計採購金額</span>
+                   <span className="text-[#F05A42] font-black text-xl">${vendor.totalAmount.toLocaleString()}</span>
+                 </div>
+               </div>
+             </button>
+           ))}
+         </div>
       </div>
     </div>
   );
