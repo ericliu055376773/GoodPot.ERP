@@ -838,6 +838,8 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
 // 前臺：門市總覽 (各廠商分類)
 // ==========================================
 function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
+  const [expandedVendor, setExpandedVendor] = useState(null);
+
   const storeOrders = useMemo(() => orders.filter(o => o.branchUsername === currentUser.username || o.branchName === currentUser.name), [currentUser, orders]);
 
   const vendorStats = useMemo(() => {
@@ -902,33 +904,66 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
         </div>
       )}
 
-      {/* 新增：最近已入庫紀錄，並依分類小卡群組化顯示 */}
+      {/* 新增：最近已入庫紀錄，風琴式分類小卡顯示 */}
       {Object.keys(groupedReceivedOrders).length > 0 && (
         <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
             <CheckCircle2 className="text-[#10B981]" /> 最近已入庫紀錄 (依廠商分類)
           </h3>
-          <div className="space-y-6">
-            {Object.entries(groupedReceivedOrders).map(([vName, vOrders]) => (
-              <div key={vName} className="bg-[#FFFFFF] p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent">
-                 <h4 className="font-black text-[#1A1D21] text-lg mb-4 flex items-center gap-2 border-b border-[#F2F4F7] pb-3">
-                   <Briefcase className="text-[#9CA3AF]" size={20} /> {vName}
-                 </h4>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                   {vOrders.map(order => (
-                     <div key={order.id} className="bg-[#F2F4F7]/50 p-4 rounded-2xl border border-[#E5E8EB] flex justify-between items-center opacity-80 hover:opacity-100 transition-opacity">
-                        <div>
-                           <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-white px-2 py-1 rounded-md shadow-sm border border-[#E5E8EB]">{order.date}</span>
-                           <span className="font-bold text-[#1A1D21] text-base block mt-1.5">{order.id}</span>
-                        </div>
-                        <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-3 py-1.5 rounded-lg flex items-center gap-1">
-                          <CheckCircle2 size={14} /> 已入庫
-                        </span>
+          <div className="space-y-4">
+            {Object.entries(groupedReceivedOrders).map(([vName, vOrders]) => {
+              const isExpanded = expandedVendor === vName;
+              return (
+                <div key={vName} className={`bg-[#FFFFFF] rounded-[2rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#10B981]/30' : 'hover:border-[#9CA3AF]/50'}`}>
+                   <button onClick={() => setExpandedVendor(isExpanded ? null : vName)} className="w-full p-5 sm:p-6 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors">
+                      <div className="flex items-center gap-4">
+                         <div className={`p-3 rounded-2xl transition-colors ${isExpanded ? 'bg-[#ECFDF5] text-[#10B981]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                           <Briefcase size={24} />
+                         </div>
+                         <h4 className="font-black text-[#1A1D21] text-xl">{vName}</h4>
+                      </div>
+                      <div className="flex items-center gap-4">
+                         <span className={`text-sm font-bold px-3 py-1.5 rounded-lg hidden sm:block ${isExpanded ? 'bg-[#ECFDF5] text-[#10B981]' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                            共 {vOrders.length} 筆已入庫
+                         </span>
+                         <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[#ECFDF5] text-[#10B981]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                            <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                         </div>
+                      </div>
+                   </button>
+                   
+                   {isExpanded && (
+                     <div className="p-5 sm:p-6 pt-0 border-t border-[#F2F4F7] bg-[#F2F4F7]/20">
+                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                         {vOrders.map(order => {
+                           const totalQty = order.items?.reduce((sum, it) => sum + (parseFloat(it.orderQty || it.quantity) || 0), 0) || 0;
+                           const uniqueUnits = [...new Set(order.items?.map(it => it.unit || '件'))];
+                           const unitText = uniqueUnits.length === 1 ? uniqueUnits[0] : '件(等)';
+
+                           return (
+                             <div key={order.id} className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 opacity-90 hover:opacity-100 transition-opacity shadow-sm">
+                                <div className="flex justify-between items-start">
+                                   <div>
+                                      <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] px-2 py-1 rounded-md mb-1.5 inline-block tracking-widest">{order.date}</span>
+                                      <span className="font-black text-[#1A1D21] text-base block">{order.id}</span>
+                                   </div>
+                                   <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-1 rounded-lg flex items-center gap-1 shrink-0">
+                                     <CheckCircle2 size={12} /> 已入庫
+                                   </span>
+                                </div>
+                                <div className="pt-2 border-t border-[#F2F4F7] flex justify-between items-end">
+                                   <span className="text-xs font-bold text-[#9CA3AF]">進貨總量</span>
+                                   <span className="font-black text-[#1A1D21] text-lg">{totalQty} <span className="text-sm font-bold text-[#6B7280]">{unitText}</span></span>
+                                </div>
+                             </div>
+                           );
+                         })}
+                       </div>
                      </div>
-                   ))}
-                 </div>
-              </div>
-            ))}
+                   )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
