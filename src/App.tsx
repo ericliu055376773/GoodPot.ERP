@@ -838,6 +838,9 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
 // 前臺：門市總覽 (各廠商分類)
 // ==========================================
 function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
+  const [expandedPending, setExpandedPending] = useState(null);
+  const [expandedReceived, setExpandedReceived] = useState(null);
+
   const storeOrders = useMemo(() => orders.filter(o => o.branchUsername === currentUser.username || o.branchName === currentUser.name), [currentUser, orders]);
 
   const vendorStats = useMemo(() => {
@@ -879,58 +882,123 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
             目前沒有來自點貨系統的待接收單據
          </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {vendorStats.map(vendor => (
-            <button
-              key={vendor.id}
-              onClick={() => onSelectVendor(vendor)}
-              className="group bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-sm border border-[#E5E8EB] hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] hover:border-[#F05A42]/30 active:scale-[0.98] transition-all duration-300 text-left flex flex-col h-full relative"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-4 bg-[#F2F4F7] rounded-2xl group-hover:bg-[#FFF2F0] transition-colors shadow-inner text-[#F05A42]">
-                  <Layers size={28} />
-                </div>
-                <h3 className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
+        <div className="space-y-4">
+          {vendorStats.map(vendor => {
+            const vOrders = storeOrders.filter(o => o.id.includes(`-${vendor.id}-`) && o.status !== 'received');
+            const isExpanded = expandedPending === vendor.id;
+
+            return (
+              <div key={vendor.id} className={`bg-[#FFFFFF] rounded-[2rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#F05A42]/30' : 'hover:border-[#9CA3AF]/50'}`}>
+                 <button onClick={() => setExpandedPending(isExpanded ? null : vendor.id)} className="w-full p-5 sm:p-6 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors text-left">
+                    <div className="flex items-center gap-4">
+                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isExpanded ? 'bg-[#F05A42] text-white' : 'bg-[#F2F4F7] text-[#F05A42]'}`}>
+                          <Layers size={24} />
+                       </div>
+                       <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{vendor.name}</h3>
+                    </div>
+                    <div className="flex items-center gap-4">
+                       <span className="text-[#F05A42] font-black text-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-1.5 rounded-lg animate-pulse whitespace-nowrap">
+                          待核對 {vendor.orderCount} 筆
+                       </span>
+                       <div className={`p-2 rounded-full transition-colors hidden sm:block ${isExpanded ? 'bg-[#FFF2F0] text-[#F05A42]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                          <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                       </div>
+                    </div>
+                 </button>
+
+                 {isExpanded && (
+                    <div className="p-5 sm:p-6 pt-0 border-t border-[#F2F4F7] bg-[#F9FAFB]">
+                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-5">
+                          {vOrders.map(order => (
+                             <div key={order.id} className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 shadow-sm">
+                                <div className="flex justify-between items-start border-b border-dashed border-[#E5E8EB] pb-3">
+                                   <div>
+                                      <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-[#F2F4F7] px-2.5 py-1 rounded-md">{order.date}</span>
+                                      <span className="font-bold text-[#1A1D21] text-base block mt-2">{order.id}</span>
+                                   </div>
+                                </div>
+                                <div className="space-y-2 mt-1">
+                                   {(order.items || []).map((item, idx) => (
+                                      <div key={idx} className="flex justify-between items-center text-sm">
+                                         <span className="font-bold text-[#4B5563]">{item.name}</span>
+                                         <span className="font-black text-[#1A1D21]">{item.orderQty || item.quantity} <span className="text-xs text-[#9CA3AF]">{item.unit || '件'}</span></span>
+                                      </div>
+                                   ))}
+                                </div>
+                             </div>
+                          ))}
+                       </div>
+                       <div className="mt-6 flex justify-end">
+                          <button onClick={() => onSelectVendor(vendor)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#F05A42] hover:bg-[#D94A34] text-white px-8 py-3.5 rounded-xl font-black shadow-sm transition-all active:scale-95">
+                             <CheckCircle2 size={18} /> 進入點收核對介面
+                          </button>
+                       </div>
+                    </div>
+                 )}
               </div>
-              
-              <div className="mt-auto pt-4 border-t border-[#F2F4F7]">
-                <div className="flex justify-between items-center">
-                  <span className="text-[#6B7280] font-bold">待核對單據數</span>
-                  <span className="text-[#F05A42] font-black text-lg animate-pulse">{vendor.orderCount} 筆</span>
-                </div>
-              </div>
-            </button>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      {/* 新增：最近已入庫紀錄，並依分類小卡群組化顯示 */}
+      {/* 最近已入庫紀錄，並依分類小卡群組化顯示 (風琴式) */}
       {Object.keys(groupedReceivedOrders).length > 0 && (
         <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
             <CheckCircle2 className="text-[#10B981]" /> 最近已入庫紀錄 (依廠商分類)
           </h3>
-          <div className="space-y-6">
-            {Object.entries(groupedReceivedOrders).map(([vName, vOrders]) => (
-              <div key={vName} className="bg-[#FFFFFF] p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent">
-                 <h4 className="font-black text-[#1A1D21] text-lg mb-4 flex items-center gap-2 border-b border-[#F2F4F7] pb-3">
-                   <Briefcase className="text-[#9CA3AF]" size={20} /> {vName}
-                 </h4>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                   {vOrders.map(order => (
-                     <div key={order.id} className="bg-[#F2F4F7]/50 p-4 rounded-2xl border border-[#E5E8EB] flex justify-between items-center opacity-80 hover:opacity-100 transition-opacity">
-                        <div>
-                           <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-white px-2 py-1 rounded-md shadow-sm border border-[#E5E8EB]">{order.date}</span>
-                           <span className="font-bold text-[#1A1D21] text-base block mt-1.5">{order.id}</span>
-                        </div>
-                        <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-3 py-1.5 rounded-lg flex items-center gap-1">
-                          <CheckCircle2 size={14} /> 已入庫
-                        </span>
-                     </div>
-                   ))}
-                 </div>
-              </div>
-            ))}
+          <div className="space-y-4">
+            {Object.entries(groupedReceivedOrders).map(([vName, vOrders]) => {
+              const isExpanded = expandedReceived === vName;
+              return (
+                <div key={vName} className={`bg-[#FFFFFF] rounded-[2rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#10B981]/30' : 'hover:border-[#9CA3AF]/50'}`}>
+                   <button onClick={() => setExpandedReceived(isExpanded ? null : vName)} className="w-full p-5 sm:p-6 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors text-left">
+                      <div className="flex items-center gap-4">
+                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isExpanded ? 'bg-[#10B981] text-white' : 'bg-[#ECFDF5] text-[#10B981]'}`}>
+                            <Briefcase size={24} />
+                         </div>
+                         <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{vName}</h3>
+                      </div>
+                      <div className="flex items-center gap-4">
+                         <span className={`text-sm font-bold px-3 py-1.5 rounded-lg whitespace-nowrap ${isExpanded ? 'bg-[#ECFDF5] text-[#10B981]' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                            已入庫 {vOrders.length} 筆
+                         </span>
+                         <div className={`p-2 rounded-full transition-colors hidden sm:block ${isExpanded ? 'bg-[#ECFDF5] text-[#10B981]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                            <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                         </div>
+                      </div>
+                   </button>
+
+                   {isExpanded && (
+                      <div className="p-5 sm:p-6 pt-0 border-t border-[#F2F4F7] bg-[#F9FAFB]">
+                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-5">
+                            {vOrders.map(order => (
+                               <div key={order.id} className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 shadow-sm opacity-90 hover:opacity-100 transition-opacity">
+                                  <div className="flex justify-between items-start border-b border-dashed border-[#E5E8EB] pb-3">
+                                     <div>
+                                        <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-[#F2F4F7] px-2.5 py-1 rounded-md">{order.date}</span>
+                                        <span className="font-bold text-[#1A1D21] text-base block mt-2">{order.id}</span>
+                                     </div>
+                                     <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                       <CheckCircle2 size={14} /> 已入庫
+                                     </span>
+                                  </div>
+                                  <div className="space-y-2 mt-1">
+                                     {(order.items || []).map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-sm">
+                                           <span className="font-bold text-[#4B5563]">{item.name}</span>
+                                           <span className="font-black text-[#1A1D21]">{item.orderQty || item.quantity} <span className="text-xs text-[#9CA3AF]">{item.unit || '件'}</span></span>
+                                        </div>
+                                     ))}
+                                  </div>
+                               </div>
+                            ))}
+                         </div>
+                      </div>
+                   )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1764,6 +1832,7 @@ function AdminChartsOverview({ users, orders }) {
 // 總部 Tab 5：異常通報監控面板 
 // ==========================================
 function AdminAbnormalOverview({ orders, users }) {
+  // 只撈出「狀態為 abnormal 且尚未修復」的單據
   const abnormalOrders = orders.filter(o => o.status === 'abnormal').sort((a, b) => (b.abnormalTime || b.timestamp) - (a.abnormalTime || a.timestamp));
 
   return (
@@ -1780,7 +1849,7 @@ function AdminAbnormalOverview({ orders, users }) {
           </div>
         ) : (
           abnormalOrders.map(order => {
-            const store = users.find(u => u.username === order.branchUsername || u.branchName === order.branchName);
+            const store = users.find(u => u.username === order.branchUsername);
             const vendorName = order.id.split('-')[1] || '其他廠商';
             const dateStr = order.abnormalTime ? new Date(order.abnormalTime).toLocaleString('zh-TW', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : order.date;
 
@@ -1793,7 +1862,7 @@ function AdminAbnormalOverview({ orders, users }) {
                    <div className="flex items-center gap-4">
                       <div className="p-3.5 bg-[#FEF2F2] text-[#EF4444] rounded-2xl shadow-inner"><AlertTriangle size={28} /></div>
                       <div>
-                        <span className="bg-[#1A1D21] text-white text-[11px] font-black px-2.5 py-1 rounded-md mb-1.5 inline-block tracking-widest">{store?.branchName || order.branchName || '未知門店'}</span>
+                        <span className="bg-[#1A1D21] text-white text-[11px] font-black px-2.5 py-1 rounded-md mb-1.5 inline-block tracking-widest">{store?.branchName || '未知門店'}</span>
                         <h3 className="font-black text-[#1A1D21] text-xl">{vendorName}</h3>
                       </div>
                    </div>
