@@ -34,17 +34,21 @@ import {
   Settings,
   Edit2,
   ShoppingCart,
-  RefreshCcw
+  RefreshCcw,
+  TrendingDown,
+  Minus,
+  ChevronDown,
+  Search
 } from 'lucide-react';
 
 // ==========================================
-//  Firebase 雲端資料庫設定
+//  Firebase 雲端資料庫設定 (Canvas 環境自動適應版)
 // ==========================================
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 
-const firebaseConfig = {
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyAc0LGsLeEBcJ3fOj08NwAWbZL0d3GKHrA",
   authDomain: "ypxerp.firebaseapp.com",
   projectId: "ypxerp",
@@ -53,12 +57,10 @@ const firebaseConfig = {
   appId: "1:684981995411:web:a32310ced01fc8ca964a66",
   measurementId: "G-MFJ8WW5707"
 };
-
-// 優化：避免 React 熱重載時 Firebase 重複初始化報錯
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'hotpot-erp-system'; 
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'hotpot-erp-system'; 
 
 // 系統預設商品目錄
 const initialProducts = [
@@ -96,7 +98,7 @@ export default function App() {
   const [ordersDb, setOrdersDb] = useState([]);
   const [inventoryDb, setInventoryDb] = useState({});
   const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts }); 
-  const [compensationsDb, setCompensationsDb] = useState([]); // 新增退貨補償資料庫
+  const [compensationsDb, setCompensationsDb] = useState([]); 
   const [expiryRecords, setExpiryRecords] = useState([]);
   
   const [currentUser, setCurrentUser] = useState(null);
@@ -124,7 +126,15 @@ export default function App() {
   // ==========================================
   useEffect(() => {
     const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (err) { console.error('Auth Error:', err); }
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) { 
+        console.error('Auth Error:', err); 
+      }
     };
     initAuth();
     
@@ -135,36 +145,51 @@ export default function App() {
   useEffect(() => {
     if (!fbUser) return;
     
-    const unsubUsers = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_users'), (snap) => setUsersDb(snap.docs.map(d => d.data())));
-    const unsubOrders = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_orders'), (snap) => {
-      const fetchedOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setOrdersDb(fetchedOrders.sort((a, b) => b.timestamp - a.timestamp));
-    });
-    const unsubInv = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_inventory'), (snap) => {
-      const inv = {};
-      snap.docs.forEach(d => inv[d.id] = d.data());
-      setInventoryDb(inv);
-    });
+    const unsubUsers = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_users'), 
+      (snap) => setUsersDb(snap.docs.map(d => d.data())),
+      (error) => console.error("Error fetching users:", error)
+    );
     
-    // 監聽商品退貨補償資料
-    const unsubCompensations = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_compensations'), (snap) => {
-      const fetchedComps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCompensationsDb(fetchedComps.sort((a, b) => b.timestamp - a.timestamp));
-    });
+    const unsubOrders = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_orders'), 
+      (snap) => {
+        const fetchedOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setOrdersDb(fetchedOrders.sort((a, b) => b.timestamp - a.timestamp));
+      },
+      (error) => console.error("Error fetching orders:", error)
+    );
+    
+    const unsubInv = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_inventory'), 
+      (snap) => {
+        const inv = {};
+        snap.docs.forEach(d => inv[d.id] = d.data());
+        setInventoryDb(inv);
+      },
+      (error) => console.error("Error fetching inventory:", error)
+    );
+    
+    const unsubCompensations = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_compensations'), 
+      (snap) => {
+        const fetchedComps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setCompensationsDb(fetchedComps.sort((a, b) => b.timestamp - a.timestamp));
+      },
+      (error) => console.error("Error fetching compensations:", error)
+    );
 
-    const unsubOptions = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        // 確保舊資料也有異常原因與退貨商品設定
-        if (!data.abnormalReasons) data.abnormalReasons = initialAbnormalReasons;
-        if (!data.compensationProducts) data.compensationProducts = initialCompensationProducts;
-        setSystemOptions(data);
-      } else {
-        const initOpts = { categories: [], units: ['件', '箱', '包', '公斤', '台斤', '盒'], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts };
-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), initOpts);
-        setSystemOptions(initOpts);
-      }
-    });
+    const unsubOptions = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), 
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (!data.abnormalReasons) data.abnormalReasons = initialAbnormalReasons;
+          if (!data.compensationProducts) data.compensationProducts = initialCompensationProducts;
+          setSystemOptions(data);
+        } else {
+          const initOpts = { categories: [], units: ['件', '箱', '包', '公斤', '台斤', '盒'], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts };
+          setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), initOpts);
+          setSystemOptions(initOpts);
+        }
+      },
+      (error) => console.error("Error fetching options:", error)
+    );
 
     return () => { unsubUsers(); unsubOrders(); unsubInv(); unsubCompensations(); unsubOptions(); };
   }, [fbUser]);
@@ -264,7 +289,7 @@ export default function App() {
         status: 'abnormal', 
         abnormalReason: reportForm.reason, 
         abnormalItem: reportForm.item, 
-        abnormalPhoto: reportForm.photo || null, // 儲存照片
+        abnormalPhoto: reportForm.photo || null, 
         abnormalTime: Date.now() 
       });
       showAlert('已將異常通報及照片上傳至總部雲端！');
@@ -274,7 +299,6 @@ export default function App() {
     }
   };
 
-  // 處理門市前台「異常修復完成」的動作
   const handleResolveAbnormal = (orderId) => {
     showConfirm('確定異常狀況已排除？\n按下確認後，該單將標記為「已接收」並自動將數量同步入庫。', async () => {
       try {
@@ -305,16 +329,15 @@ export default function App() {
     });
   };
 
-  const storePendingCount = currentUser?.role === 'store' ? ordersDb.filter(o => o.branchUsername === currentUser?.username && o.status !== 'received' && o.status !== 'abnormal').length : 0;
+  const storePendingCount = currentUser?.role === 'store' ? ordersDb.filter(o => (o.branchUsername === currentUser?.username || o.branchName === currentUser?.name) && o.status !== 'received' && o.status !== 'abnormal').length : 0;
   const storeExpiringCount = currentUser?.role === 'store' ? expiryRecords.filter(r => {
     if (r.storeId !== currentUser?.id) return false;
     const daysLeft = Math.ceil((new Date(r.expiryDate).getTime() - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
     return daysLeft <= 14;
   }).length : 0;
-  const storeAbnormalCount = currentUser?.role === 'store' ? ordersDb.filter(o => o.branchUsername === currentUser?.username && o.status === 'abnormal').length : 0;
+  const storeAbnormalCount = currentUser?.role === 'store' ? ordersDb.filter(o => (o.branchUsername === currentUser?.username || o.branchName === currentUser?.name) && o.status === 'abnormal').length : 0;
   const storeCompensationCount = currentUser?.role === 'store' ? compensationsDb.filter(c => c.storeId === currentUser?.username && c.status === 'pending').length : 0;
   
-  // 總部計數器
   const adminAbnormalCount = currentUser?.role === 'admin' ? ordersDb.filter(o => o.status === 'abnormal').length : 0;
   const adminCompensationCount = currentUser?.role === 'admin' ? compensationsDb.filter(c => c.status === 'pending').length : 0;
 
@@ -482,6 +505,7 @@ export default function App() {
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
           {currentView === 'admin_dashboard' && <AdminDashboard users={usersDb} vendors={dynamicVendors} orders={ordersDb} products={trackingProducts} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
+          {currentView === 'admin_price_trends' && <AdminPriceTrends orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
           {currentView === 'admin_abnormal' && <AdminAbnormalOverview orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_compensation' && <AdminCompensationOverview compensations={compensationsDb} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
@@ -507,6 +531,7 @@ export default function App() {
             <button onClick={() => setCurrentView('admin_expiry')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_expiry' ? 'text-[#F59E0B] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_expiry' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><CalendarDays size={22} strokeWidth={currentView === 'admin_expiry' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">食材有效期線</span></button>
             <button onClick={() => setCurrentView('admin_dashboard')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_dashboard' ? 'text-white scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_dashboard' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><Store size={22} strokeWidth={currentView === 'admin_dashboard' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">各店叫貨額</span></button>
             <button onClick={() => setCurrentView('admin_charts')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_charts' ? 'text-[#10B981] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_charts' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><PieChart size={22} strokeWidth={currentView === 'admin_charts' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">圖表分析</span></button>
+            <button onClick={() => setCurrentView('admin_price_trends')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_price_trends' ? 'text-[#3B82F6] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_price_trends' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><TrendingUp size={22} strokeWidth={currentView === 'admin_price_trends' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">上漲降價</span></button>
           </div>
         )}
 
@@ -813,13 +838,16 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
 // 前臺：門市總覽 (各廠商分類)
 // ==========================================
 function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
+  const storeOrders = useMemo(() => orders.filter(o => o.branchUsername === currentUser.username || o.branchName === currentUser.name), [currentUser, orders]);
+
   const vendorStats = useMemo(() => {
-    const storeOrders = orders.filter(o => o.branchUsername === currentUser.username);
     return vendors.map(vendor => {
       const vOrders = storeOrders.filter(o => o.id.includes(`-${vendor.id}-`) && o.status !== 'received');
       return { ...vendor, orderCount: vOrders.length };
     }).filter(v => v.orderCount > 0); 
-  }, [currentUser, vendors, orders]);
+  }, [vendors, storeOrders]);
+
+  const receivedOrders = useMemo(() => storeOrders.filter(o => o.status === 'received').sort((a,b) => b.timestamp - a.timestamp).slice(0, 6), [storeOrders]);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -862,6 +890,28 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
           ))}
         </div>
       )}
+
+      {/* 新增：最近已入庫紀錄顯示，避免誤會單據消失 */}
+      {receivedOrders.length > 0 && (
+        <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
+            <CheckCircle2 className="text-[#10B981]" /> 最近已入庫紀錄
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+             {receivedOrders.map(order => (
+               <div key={order.id} className="bg-white p-5 rounded-2xl shadow-sm border border-[#E5E8EB] flex justify-between items-center opacity-80 hover:opacity-100 transition-opacity">
+                  <div>
+                     <span className="text-xs font-bold text-[#9CA3AF] mr-2 bg-[#F2F4F7] px-2 py-1 rounded-md">{order.date}</span>
+                     <span className="font-bold text-[#1A1D21] text-lg block mt-1">{order.id.split('-')[1] || '訂單'} <span className="text-sm text-[#6B7280] font-mono">{order.id}</span></span>
+                  </div>
+                  <span className="text-sm font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-3 py-1.5 rounded-lg flex items-center gap-1">
+                    <CheckCircle2 size={14} /> 已入庫
+                  </span>
+               </div>
+             ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -870,7 +920,7 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
 // 前臺：門市異常通報總覽 
 // ==========================================
 function StoreAbnormalOverview({ currentUser, orders, onResolveAbnormal }) {
-  const abnormalOrders = orders.filter(o => o.branchUsername === currentUser.username && o.status === 'abnormal').sort((a, b) => (b.abnormalTime || b.timestamp) - (a.abnormalTime || a.timestamp));
+  const abnormalOrders = orders.filter(o => (o.branchUsername === currentUser.username || o.branchName === currentUser.name) && o.status === 'abnormal').sort((a, b) => (b.abnormalTime || b.timestamp) - (a.abnormalTime || a.timestamp));
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -882,7 +932,7 @@ function StoreAbnormalOverview({ currentUser, orders, onResolveAbnormal }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {abnormalOrders.length === 0 ? (
           <div className="col-span-full text-center py-20 text-[#9CA3AF] font-bold text-lg border-2 border-dashed border-[#E5E8EB] rounded-[2rem] bg-[#FFFFFF]">
-            太棒了！目前門店無任何待處理的異常通報。🎉
+            太棒了！目前門店無任何待處理的異常通報。
           </div>
         ) : (
           abnormalOrders.map(order => {
@@ -966,7 +1016,7 @@ function StoreCompensationOverview({ currentUser, vendors, systemOptions, compen
         status: 'pending',
         timestamp: Date.now()
       });
-      showAlert('✅ 退貨補償申請已送出！總部處理後會在此頁面通知。');
+      showAlert(' 退貨補償申請已送出！總部處理後會在此頁面通知。');
       setForm({ vendor: '', productName: '', quantity: '', unit: '件' });
     } catch (error) {
       console.error(error);
@@ -983,7 +1033,7 @@ function StoreCompensationOverview({ currentUser, vendors, systemOptions, compen
           status: 'completed',
           completedTime: Date.now()
         });
-        showAlert('✅ 已成功將此單標記為補償完畢！');
+        showAlert(' 已成功將此單標記為補償完畢！');
       } catch (error) {
         console.error(error);
         showAlert('系統更新失敗，請確認網路連線。');
@@ -1151,7 +1201,7 @@ function StoreExpiryTracker({ currentUser, products, expiryRecords, setExpiryRec
 // ==========================================
 function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVerifySuccess, onSubmitAbnormal, onResolveAbnormal, onBack }) {
   const vendorOrders = useMemo(() => {
-    return orders.filter(o => o.branchUsername === currentUser.username && o.id.includes(`-${vendor.id}-`) && o.status !== 'received');
+    return orders.filter(o => (o.branchUsername === currentUser.username || o.branchName === currentUser.name) && o.id.includes(`-${vendor.id}-`) && o.status !== 'received');
   }, [currentUser, vendor, orders]);
 
   const [reportingOrderId, setReportingOrderId] = useState(null);
@@ -1493,7 +1543,7 @@ function AdminDashboard({ users, vendors, orders, products, systemOptions, db, a
         </div>
         <div className="divide-y-2 divide-[#F2F4F7]">
           {stores.map(store => {
-            const storeOrders = orders.filter(o => o.branchUsername === store.username);
+            const storeOrders = orders.filter(o => o.branchUsername === store.username || o.branchName === store.branchName);
             const pendingCount = storeOrders.filter(o => o.status !== 'received').length;
             const totalAmt = storeOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             
@@ -1535,7 +1585,7 @@ function AdminChartsOverview({ users, orders }) {
   
   const chartData = useMemo(() => {
     let data = stores.map(store => {
-      const storeOrders = orders.filter(o => o.branchUsername === store.username);
+      const storeOrders = orders.filter(o => o.branchUsername === store.username || o.branchName === store.branchName);
       const totalAmt = storeOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
       return { name: store.branchName, value: totalAmt };
     }).filter(d => d.value > 0).sort((a,b) => b.value - a.value);
@@ -1601,7 +1651,6 @@ function AdminChartsOverview({ users, orders }) {
 // 總部 Tab 5：異常通報監控面板 
 // ==========================================
 function AdminAbnormalOverview({ orders, users }) {
-  // 只撈出「狀態為 abnormal 且尚未修復」的單據
   const abnormalOrders = orders.filter(o => o.status === 'abnormal').sort((a, b) => (b.abnormalTime || b.timestamp) - (a.abnormalTime || a.timestamp));
 
   return (
@@ -1614,11 +1663,11 @@ function AdminAbnormalOverview({ orders, users }) {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {abnormalOrders.length === 0 ? (
           <div className="col-span-full text-center py-20 text-[#9CA3AF] font-bold text-lg border-2 border-dashed border-[#E5E8EB] rounded-[2rem] bg-[#FFFFFF]">
-            太棒了！目前全部分店皆無異常通報。🎉
+            太棒了！目前全部分店皆無異常通報。
           </div>
         ) : (
           abnormalOrders.map(order => {
-            const store = users.find(u => u.username === order.branchUsername);
+            const store = users.find(u => u.username === order.branchUsername || u.branchName === order.branchName);
             const vendorName = order.id.split('-')[1] || '其他廠商';
             const dateStr = order.abnormalTime ? new Date(order.abnormalTime).toLocaleString('zh-TW', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : order.date;
 
@@ -1631,7 +1680,7 @@ function AdminAbnormalOverview({ orders, users }) {
                    <div className="flex items-center gap-4">
                       <div className="p-3.5 bg-[#FEF2F2] text-[#EF4444] rounded-2xl shadow-inner"><AlertTriangle size={28} /></div>
                       <div>
-                        <span className="bg-[#1A1D21] text-white text-[11px] font-black px-2.5 py-1 rounded-md mb-1.5 inline-block tracking-widest">{store?.branchName || '未知門店'}</span>
+                        <span className="bg-[#1A1D21] text-white text-[11px] font-black px-2.5 py-1 rounded-md mb-1.5 inline-block tracking-widest">{store?.branchName || order.branchName || '未知門店'}</span>
                         <h3 className="font-black text-[#1A1D21] text-xl">{vendorName}</h3>
                       </div>
                    </div>
@@ -1677,7 +1726,7 @@ function AdminCompensationOverview({ compensations, users, db, appId, showAlert,
           status: 'completed',
           completedTime: Date.now()
         });
-        showAlert('✅ 已成功將此單標記為補償完畢！');
+        showAlert(' 已成功將此單標記為補償完畢！');
       } catch (e) {
         console.error(e);
         showAlert('系統更新失敗，請檢查網路連線。');
@@ -1699,7 +1748,7 @@ function AdminCompensationOverview({ compensations, users, db, appId, showAlert,
             <RefreshCcw size={20} /> 待處理補償單 ({pendingComps.length})
           </h3>
           <div className="space-y-4">
-            {pendingComps.length === 0 ? <div className="text-center py-10 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-3xl bg-white">太棒了！無待處理的退貨補償申請。🎉</div> : 
+            {pendingComps.length === 0 ? <div className="text-center py-10 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-3xl bg-white">太棒了！無待處理的退貨補償申請。</div> : 
               pendingComps.map(c => (
                 <div key={c.id} className="bg-white p-6 rounded-[2rem] border-2 border-[#E9D5FF] shadow-sm flex flex-col gap-4 group hover:shadow-md transition-shadow relative overflow-hidden">
                   <div className="absolute top-0 right-0 bg-[#8B5CF6] text-white text-[10px] font-black px-3 py-1 rounded-bl-xl shadow-sm tracking-widest">
@@ -1818,7 +1867,7 @@ function AdminStoreOrders({ store, vendors, orders, onBack, systemOptions, db, a
   const [draggedV, setDraggedV] = useState(null);
   const [dragOverV, setDragOverV] = useState(null);
 
-  const storeOrders = orders.filter(o => o.branchUsername === store?.username).sort((a,b) => b.timestamp - a.timestamp);
+  const storeOrders = orders.filter(o => o.branchUsername === store?.username || o.branchName === store?.branchName).sort((a,b) => b.timestamp - a.timestamp);
   const rawVendors = [...new Set(storeOrders.map(o => o.id.split('-')[1] || '其他分類'))];
   
   const globalOrder = systemOptions?.vendorOrder || [];
@@ -2092,7 +2141,7 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
                <div className="mt-2">
                   <p className={`font-bold bg-white p-4 rounded-xl shadow-inner border leading-relaxed ${order.abnormalResolved ? 'text-[#064E3B] border-[#A7F3D0]' : 'text-[#1A1D21] border-[#FECACA]'}`}>
                     原始通報：{order.abnormalReason} (異常商品：{order.abnormalItem})
-                    {order.abnormalResolved && <span className="block mt-2 text-[#10B981]">✅ 門市已排除異常，並成功完成入庫作業。</span>}
+                    {order.abnormalResolved && <span className="block mt-2 text-[#10B981]"> 門市已排除異常，並成功完成入庫作業。</span>}
                   </p>
                   
                   {/* 若有夾帶照片，則顯示照片 */}
@@ -2215,4 +2264,229 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
       </div>
     </div>
   );
+}
+
+// ==========================================
+// 總部 Tab 7：上漲降價 (風琴式商品趨勢與搜尋)
+// ==========================================
+function AdminPriceTrends({ orders, users }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedStore, setExpandedStore] = useState(null);
+
+  const stores = users.filter(u => u.role !== 'admin');
+
+  // 計算每家門市的商品歷史價格趨勢
+  const { storeSummary, globalSummary } = useMemo(() => {
+    const map = {}; 
+    const sortedOrders = [...orders].sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0));
+    
+    sortedOrders.forEach(order => {
+       const sName = order.branchName || '未知門店';
+       const vendor = order.id.split('-')[1] || '其他廠商';
+       if (!map[sName]) map[sName] = {};
+       
+       (order.items || []).forEach(item => {
+          const pName = item.name;
+          if (!pName || typeof item.price !== 'number') return;
+          
+          const key = `${pName}_${vendor}`;
+          if (!map[sName][key]) map[sName][key] = { productName: pName, vendor, history: [] };
+          
+          map[sName][key].history.push({ price: item.price, date: order.date });
+       });
+    });
+    
+    const sSummary = {};
+    const gSummary = [];
+    
+    Object.keys(map).forEach(sName => {
+       sSummary[sName] = [];
+       Object.keys(map[sName]).forEach(key => {
+          const data = map[sName][key];
+          const hist = data.history;
+          if (hist.length === 0) return;
+          
+          const latest = hist[hist.length - 1];
+          let previousPrice = latest.price;
+          // 往回找最近一次「不同」的價格，作為前次比價基準
+          for (let i = hist.length - 2; i >= 0; i--) {
+             if (hist[i].price !== latest.price) {
+                previousPrice = hist[i].price;
+                break;
+             }
+          }
+          
+          const diff = latest.price - previousPrice;
+          let trend = 'flat';
+          if (diff > 0) trend = 'up';
+          if (diff < 0) trend = 'down';
+          
+          const itemData = {
+             storeName: sName,
+             productName: data.productName,
+             vendor: data.vendor,
+             latestPrice: latest.price,
+             previousPrice,
+             diff,
+             trend,
+             date: latest.date
+          };
+          
+          sSummary[sName].push(itemData);
+          gSummary.push(itemData);
+       });
+       // 將有漲跌變動的商品排在最上面
+       sSummary[sName].sort((a,b) => (a.trend === 'flat' ? 1 : 0) - (b.trend === 'flat' ? 1 : 0));
+    });
+    
+    return { storeSummary: sSummary, globalSummary: gSummary };
+  }, [orders]);
+
+  // 搜尋過濾功能
+  const searchResults = useMemo(() => {
+    if (!searchTerm.trim()) return {};
+    const term = searchTerm.toLowerCase();
+    const filtered = globalSummary.filter(item => item.productName.toLowerCase().includes(term));
+    
+    const grouped = {};
+    filtered.forEach(item => {
+      if (!grouped[item.productName]) grouped[item.productName] = {};
+      if (!grouped[item.productName][item.vendor]) grouped[item.productName][item.vendor] = [];
+      grouped[item.productName][item.vendor].push(item);
+    });
+    return grouped;
+  }, [searchTerm, globalSummary]);
+
+  const toggleStore = (storeName) => {
+    setExpandedStore(prev => prev === storeName ? null : storeName);
+  };
+
+  const TrendCard = ({ item, showStore }) => {
+     const isUp = item.trend === 'up';
+     const isDown = item.trend === 'down';
+     const isFlat = item.trend === 'flat';
+     
+     return (
+       <div className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#E5E8EB] shadow-[0_4px_20px_rgb(0,0,0,0.02)] flex flex-col relative overflow-hidden group hover:border-[#3B82F6]/50 transition-colors">
+          {showStore && <div className="absolute top-0 right-0 bg-[#1A1D21] text-white text-[10px] font-black px-3 py-1.5 rounded-bl-xl tracking-widest z-10 shadow-sm">{item.storeName}</div>}
+          
+          <div className="flex justify-between items-start mb-4">
+             <div>
+                {!showStore && <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] border border-[#E5E8EB] px-2 py-1 rounded-md mb-2 inline-block tracking-widest">{item.vendor}</span>}
+                <h4 className="font-black text-[#1A1D21] text-lg leading-tight w-[85%]">{item.productName}</h4>
+             </div>
+          </div>
+          
+          <div className="flex justify-between items-end mt-auto pt-3 border-t border-[#F2F4F7]">
+             <div>
+                <div className="text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold mb-0.5">最新進價</div>
+                <div className="text-2xl font-black text-[#1A1D21]">${item.latestPrice}</div>
+             </div>
+             <div className="text-right">
+                {isUp && <div className="flex items-center gap-1 text-[#EF4444] bg-[#FEF2F2] border border-[#FECACA] px-2.5 py-1 rounded-lg font-black text-sm shadow-sm"><TrendingUp size={16} strokeWidth={3}/> 漲 ${item.diff}</div>}
+                {isDown && <div className="flex items-center gap-1 text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-2.5 py-1 rounded-lg font-black text-sm shadow-sm"><TrendingDown size={16} strokeWidth={3}/> 降 ${Math.abs(item.diff)}</div>}
+                {isFlat && <div className="flex items-center gap-1 text-[#6B7280] bg-[#F2F4F7] border border-[#E5E8EB] px-2.5 py-1 rounded-lg font-black text-sm shadow-sm"><Minus size={16} strokeWidth={3}/> 持平</div>}
+                {!isFlat && <div className="text-[10px] text-[#9CA3AF] font-bold mt-1.5">前次 $ {item.previousPrice}</div>}
+             </div>
+          </div>
+       </div>
+     );
+  };
+
+  return (
+    <div className="animate-in fade-in duration-500">
+      <div className="mb-8">
+        <h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">商品上漲降價追蹤</h2>
+        <p className="text-[#6B7280] font-bold">查詢各門市商品近期的進貨價格趨勢，輸入商品名稱以比較各廠商報價。</p>
+      </div>
+
+      <div className="relative mb-8">
+         <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+            <Search className="text-[#9CA3AF]" size={24} />
+         </div>
+         <input 
+            type="text" 
+            placeholder="搜尋商品名稱，比較各店與各廠商報價 (例如：板腱牛肉)..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-14 pr-12 py-4 bg-[#FFFFFF] border-[2px] border-transparent rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus:border-[#3B82F6] focus:ring-4 focus:ring-[#3B82F6]/20 outline-none font-black text-[#1A1D21] text-lg transition-all"
+         />
+         {searchTerm && (
+           <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-[#9CA3AF] hover:text-[#1A1D21] transition-colors">
+              <X size={24} strokeWidth={3} />
+           </button>
+         )}
+      </div>
+
+      {searchTerm.trim() ? (
+         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+           {Object.keys(searchResults).length === 0 ? (
+              <div className="text-center py-20 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-[2.5rem] bg-[#FFFFFF]">
+                 找不到符合「{searchTerm}」的商品進貨紀錄
+              </div>
+           ) : (
+              Object.keys(searchResults).map(pName => (
+                 <div key={pName} className="bg-[#FFFFFF] rounded-[2.5rem] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent">
+                    <h3 className="text-2xl font-black text-[#1A1D21] mb-6 flex items-center gap-3">
+                       <Tag className="text-[#3B82F6]" size={28} /> {pName}
+                    </h3>
+                    <div className="space-y-6">
+                       {Object.keys(searchResults[pName]).map(vendor => (
+                          <div key={vendor} className="bg-[#F2F4F7]/50 p-5 sm:p-6 rounded-[2rem] border border-[#E5E8EB]">
+                             <h4 className="text-lg font-bold text-[#1A1D21] mb-4 flex items-center gap-2">
+                                <Briefcase className="text-[#9CA3AF]" size={20}/> 廠商：{vendor}
+                             </h4>
+                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {searchResults[pName][vendor].map((item, idx) => (
+                                   <TrendCard key={idx} item={item} showStore={true} />
+                                ))}
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+              ))
+           )}
+         </div>
+      ) : (
+         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+            {stores.length === 0 && <div className="text-center py-20 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-[2.5rem] bg-[#FFFFFF]">目前無門市資料</div>}
+            {stores.map(store => {
+               const isExpanded = expandedStore === store.branchName;
+               const items = storeSummary[store.branchName] || [];
+               return (
+                 <div key={store.username} className={`bg-[#FFFFFF] rounded-[2rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#3B82F6]/30' : 'hover:border-[#9CA3AF]/50'}`}>
+                    <button onClick={() => toggleStore(store.branchName)} className="w-full p-5 sm:p-6 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors">
+                       <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl transition-colors ${isExpanded ? 'bg-[#3B82F6] text-white' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                             {store.branchName.charAt(0)}
+                          </div>
+                          <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{store.branchName}</h3>
+                       </div>
+                       <div className="flex items-center gap-4">
+                          <span className={`text-sm font-bold px-3 py-1.5 rounded-lg hidden sm:block ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                             共 {items.length} 項商品紀錄
+                          </span>
+                          <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                             <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                          </div>
+                       </div>
+                    </button>
+                    {isExpanded && (
+                       <div className="p-5 sm:p-6 pt-0 border-t border-[#F2F4F7] bg-[#F2F4F7]/20">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+                             {items.map((item, idx) => (
+                                <TrendCard key={idx} item={item} showStore={false} />
+                             ))}
+                             {items.length === 0 && <div className="col-span-full text-center text-[#9CA3AF] font-bold py-10">目前該店尚無進貨紀錄</div>}
+                          </div>
+                       </div>
+                    )}
+                 </div>
+               )
+            })}
+         </div>
+      )}
+    </div>
+  )
 }
