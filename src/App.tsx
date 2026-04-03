@@ -879,23 +879,25 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
             目前沒有來自點貨系統的待接收單據
          </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {vendorStats.map(vendor => (
-            <button key={vendor.id} onClick={() => onSelectVendor(vendor)} className="group bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] active:scale-[0.98] transition-all duration-300 text-left flex flex-col h-full relative">
-              <div className="flex items-start justify-between mb-6 relative z-10">
+            <button
+              key={vendor.id}
+              onClick={() => onSelectVendor(vendor)}
+              className="group bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-sm border border-[#E5E8EB] hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] hover:border-[#F05A42]/30 active:scale-[0.98] transition-all duration-300 text-left flex flex-col h-full relative"
+            >
+              <div className="flex items-center gap-4 mb-6">
                 <div className="p-4 bg-[#F2F4F7] rounded-2xl group-hover:bg-[#FFF2F0] transition-colors shadow-inner text-[#F05A42]">
-                  <Briefcase size={28} strokeWidth={1.5} />
+                  <Layers size={28} />
                 </div>
-                <span className="bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] text-xs px-3.5 py-1.5 rounded-full font-bold animate-pulse shadow-sm">
-                  {vendor.orderCount} 筆待核對
-                </span>
+                <h3 className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
               </div>
-              <h3 className="text-lg sm:text-xl font-bold text-[#1A1D21] mb-2 group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
-              <p className="text-xs sm:text-sm text-[#6B7280] mb-8 font-medium">點擊進入點收與核對作業</p>
               
-              <div className="pt-5 border-t-2 border-[#F2F4F7] flex justify-between items-center w-full mt-auto">
-                <span className="text-[#9CA3AF] text-xs font-bold uppercase tracking-widest">點收狀態</span>
-                <span className="text-sm font-black text-[#F05A42] flex items-center gap-1 group-hover:translate-x-1 transition-transform">前往核對 <ChevronLeft size={16} className="rotate-180" /></span>
+              <div className="mt-auto pt-4 border-t border-[#F2F4F7]">
+                <div className="flex justify-between items-center">
+                  <span className="text-[#6B7280] font-bold">待核對單據數</span>
+                  <span className="text-[#F05A42] font-black text-lg animate-pulse">{vendor.orderCount} 筆</span>
+                </div>
               </div>
             </button>
           ))}
