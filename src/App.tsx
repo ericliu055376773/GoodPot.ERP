@@ -6,10 +6,8 @@ import {
   LogOut, 
   ChevronLeft, 
   Receipt, 
-  Users, 
   Building2,
   TrendingUp,
-  CreditCard,
   Briefcase,
   CalendarDays,
   AlertTriangle,
@@ -19,10 +17,8 @@ import {
   Tag,
   CheckCircle2,
   Camera,
-  ClipboardList,
   ChevronRight,
   Layers,
-  MessageSquare,
   X,
   Menu, 
   ArrowUpDown,
@@ -503,7 +499,7 @@ export default function App() {
           {/* 總部端視圖切換 */}
           {currentView === 'admin_vendors' && <AdminVendorOverview orders={ordersDb} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
-          {currentView === 'admin_dashboard' && <AdminDashboard users={usersDb} vendors={dynamicVendors} orders={ordersDb} products={trackingProducts} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
+          {currentView === 'admin_dashboard' && <AdminDashboard users={usersDb} orders={ordersDb} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
           {currentView === 'admin_price_trends' && <AdminPriceTrends orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
@@ -904,7 +900,7 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
         </div>
       )}
 
-      {/* 新增：最近已入庫紀錄，風琴式分類小卡顯示 */}
+      {/* 最近已入庫紀錄，風琴式分類小卡顯示 */}
       {Object.keys(groupedReceivedOrders).length > 0 && (
         <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
@@ -1637,13 +1633,13 @@ function AdminExpiryOverview({ expiryRecords, users }) {
 // ==========================================
 // 總部 Tab 3：各門店總叫貨金額 
 // ==========================================
-function AdminDashboard({ users, vendors, orders, products, systemOptions, db, appId, showAlert, showConfirm }) {
+function AdminDashboard({ users, orders, systemOptions, db, appId, showAlert, showConfirm }) {
   const [adminView, setAdminView] = useState('overview'); 
   const [activeStore, setActiveStore] = useState(null);
   
   const stores = users.filter(u => u.role !== 'admin');
   
-  if (adminView === 'store_orders') return <AdminStoreOrders store={activeStore} vendors={vendors} orders={orders} onBack={() => setAdminView('overview')} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />;
+  if (adminView === 'store_orders') return <AdminStoreOrders store={activeStore} orders={orders} onBack={() => setAdminView('overview')} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />;
   if (adminView === 'store_passwords') return <AdminStorePasswords users={users} onBack={() => setAdminView('overview')} />;
 
   return (
@@ -2007,7 +2003,7 @@ function AdminStorePasswords({ users, onBack }) {
 // ==========================================
 // 總部：特定門市單據視圖
 // ==========================================
-function AdminStoreOrders({ store, vendors, orders, onBack, systemOptions, db, appId, showAlert, showConfirm }) {
+function AdminStoreOrders({ store, orders, onBack, systemOptions, db, appId, showAlert, showConfirm }) {
   const [viewVendor, setViewVendor] = useState(null); 
   const [isSorting, setIsSorting] = useState(false); 
   const [draggedV, setDraggedV] = useState(null);
