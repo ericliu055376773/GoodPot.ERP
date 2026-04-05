@@ -93,7 +93,7 @@ export default function App() {
   const [usersDb, setUsersDb] = useState([]);
   const [ordersDb, setOrdersDb] = useState([]);
   const [inventoryDb, setInventoryDb] = useState({});
-  const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts }); 
+  const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts, comparisonCategories: [] }); 
   const [compensationsDb, setCompensationsDb] = useState([]); 
   const [expiryRecords, setExpiryRecords] = useState([]);
   
@@ -430,7 +430,7 @@ export default function App() {
                 <div onClick={() => { setUiState(prev => ({ ...prev, showAdminLogin: true })); setAuthError(''); }} className="bg-gradient-to-tr from-[#F05A42] to-[#FF9C8A] w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-md cursor-pointer hover:scale-105 transition-transform" title="點擊登入總公司">
                   <Package className="w-8 h-8 text-white" />
                 </div>
-                <h1 className="text-2xl font-bold tracking-tight text-[#1A1D21]">智慧進貨 ERP</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-[#1A1D21]">進貨軟體</h1>
                 <p className="text-sm text-[#6B7280] mt-2 font-medium">{isRegistering ? '請填寫資料註冊新門店' : '與點貨系統資料同步連線中'}</p>
               </div>
 
@@ -551,7 +551,7 @@ export default function App() {
           {/* 總部端視圖切換 */}
           {currentView === 'admin_vendors' && <AdminVendorOverview orders={ordersDb} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
-          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={ordersDb} users={usersDb} />}
+          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={ordersDb} users={usersDb} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
           {currentView === 'admin_price_trends' && <AdminPriceTrends orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
@@ -1802,20 +1802,32 @@ function AdminExpiryOverview({ expiryRecords, users }) {
 }
 
 // ==========================================
-// 總部 Tab 3：商品價格比較 (原：各門店總叫貨金額)
+// 總部 Tab 3：商品價格比較 (新增分類風琴夾設計)
 // ==========================================
-function AdminProductComparison({ orders, users }) {
+function AdminProductComparison({ orders, users, systemOptions, db, appId, showAlert, showConfirm }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedVendor, setExpandedVendor] = useState(null);
+  const [timeFilter, setTimeFilter] = useState('all'); 
+  const [isEditing, setIsEditing] = useState(false);
+  const [localCategories, setLocalCategories] = useState([]);
+  const [expandedCategories, setExpandedCategories] = useState({}); // 紀錄風琴夾開關狀態
 
   const stores = users.filter(u => u.role !== 'admin');
 
+  // 計算每個商品的所有門市報價 (核心資料邏輯不變)
   const comparisonData = useMemo(() => {
     const map = {};
     const storesSet = new Set(stores.map(s => s.branchName));
 
-    // 確保由新到舊排序，這樣我們抓到的第一筆有效價格就是最新的
-    const sortedOrders = [...orders].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const now = Date.now();
+    let cutoffTime = 0;
+    if (timeFilter === '15_days') cutoffTime = now - 15 * 24 * 60 * 60 * 1000;
+    else if (timeFilter === '1_month') cutoffTime = now - 30 * 24 * 60 * 60 * 1000;
+    else if (timeFilter === '6_months') cutoffTime = now - 180 * 24 * 60 * 60 * 1000;
+    else if (timeFilter === '1_year') cutoffTime = now - 365 * 24 * 60 * 60 * 1000;
+
+    const sortedOrders = [...orders]
+      .filter(o => (o.timestamp || 0) >= cutoffTime)
+      .sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     sortedOrders.forEach(order => {
       const vendor = order.id.split('-')[1] || '其他廠商';
@@ -1827,12 +1839,10 @@ function AdminProductComparison({ orders, users }) {
       (order.items || []).forEach(item => {
         const pName = item.name;
         const price = parseFloat(item.price);
-        // 跳過沒有名稱或單價異常的資料
         if (!pName || isNaN(price) || price === 0) return;
 
         if (!map[vendor][pName]) map[vendor][pName] = {};
 
-        // 如果該門市該商品還沒有價格紀錄 (因為已按時間排序，第一筆就是最新)，就存起來
         if (!map[vendor][pName][storeName]) {
           map[vendor][pName][storeName] = {
             price: price,
@@ -1843,31 +1853,20 @@ function AdminProductComparison({ orders, users }) {
       });
     });
 
-    // 將資料轉為陣列方便渲染，並計算每個產品的最高與最低價
     let result = Object.keys(map).map(vendor => {
       const products = Object.keys(map[vendor]).map(pName => {
         const storePrices = map[vendor][pName];
         const prices = Object.values(storePrices).map(s => s.price);
         
-        // 只有超過一家門市有價格時，才計算最高最低價以供比較
         const minPrice = prices.length > 1 ? Math.min(...prices) : null;
         const maxPrice = prices.length > 1 ? Math.max(...prices) : null;
         
-        return {
-          productName: pName,
-          storePrices,
-          minPrice,
-          maxPrice
-        };
+        return { productName: pName, storePrices, minPrice, maxPrice };
       }).filter(p => Object.keys(p.storePrices).length > 0);
       
-      return {
-        vendor,
-        products: products.sort((a, b) => a.productName.localeCompare(b.productName))
-      };
+      return { vendor, products: products.sort((a, b) => a.productName.localeCompare(b.productName)) };
     }).filter(v => v.products.length > 0);
 
-    // 處理搜尋過濾
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.map(v => ({
@@ -1880,11 +1879,201 @@ function AdminProductComparison({ orders, users }) {
       vendors: result.sort((a,b) => a.vendor.localeCompare(b.vendor)), 
       allStores: Array.from(storesSet).sort() 
     };
-  }, [orders, stores, searchTerm]);
+  }, [orders, stores, searchTerm, timeFilter]);
 
-  const toggleVendor = (vendorName) => {
-    setExpandedVendor(prev => prev === vendorName ? null : vendorName);
+  // 取出所有訂單中的獨立商品名稱 (供編輯時加入分類下拉選單使用)
+  const allUniqueProductNames = useMemo(() => {
+     const names = new Set();
+     orders.forEach(o => o.items?.forEach(i => {
+         if (i.name) names.add(i.name);
+     }));
+     return Array.from(names).sort();
+  }, [orders]);
+
+  // 將 flat 卡片結構重新按「自訂分類」分組
+  const { categoriesWithItems, uncategorizedItems } = useMemo(() => {
+     const allFlatCards = comparisonData.vendors.flatMap(v => v.products.map(p => ({ vendor: v.vendor, product: p })));
+     const savedCats = systemOptions?.comparisonCategories || [];
+     
+     // 初始化分類容器
+     const resultCats = savedCats.map(cat => ({ ...cat, items: [] }));
+     const uncat = { id: 'uncategorized', name: '未分類商品', items: [] };
+
+     // 建立 對應表 Product -> Category Index
+     const catMap = {};
+     savedCats.forEach((cat, idx) => {
+         (cat.products || []).forEach(pName => {
+             catMap[pName] = idx;
+         });
+     });
+
+     allFlatCards.forEach(card => {
+         const idx = catMap[card.product.productName];
+         if (idx !== undefined) {
+             resultCats[idx].items.push(card);
+         } else {
+             uncat.items.push(card);
+         }
+     });
+
+     return { categoriesWithItems: resultCats, uncategorizedItems: uncat };
+  }, [comparisonData, systemOptions?.comparisonCategories]);
+
+  const filterOptions = [
+    { id: 'all', label: '全部紀錄' },
+    { id: '15_days', label: '近半個月' },
+    { id: '1_month', label: '近一個月' },
+    { id: '6_months', label: '近半年' },
+    { id: '1_year', label: '近一年' }
+  ];
+
+  const toggleCategory = (catId) => {
+     setExpandedCategories(prev => ({ ...prev, [catId]: prev[catId] === false ? true : false }));
   };
+
+  // --- 編輯模式專用操作 ---
+  const handleAddCategory = () => {
+      setLocalCategories([...localCategories, { id: `cat_${Date.now()}`, name: '新分類', products: [] }]);
+  };
+  const handleRemoveCategory = (idx) => {
+      showConfirm('確定要刪除此分類嗎？(不影響商品資料，僅解除分類)', () => {
+         setLocalCategories(localCategories.filter((_, i) => i !== idx));
+      });
+  };
+  const handleCatNameChange = (idx, name) => {
+      const newCats = [...localCategories];
+      newCats[idx].name = name;
+      setLocalCategories(newCats);
+  };
+  const handleAddProductToCat = (idx, productName) => {
+      if(!productName) return;
+      const newCats = [...localCategories];
+      if(!newCats[idx].products.includes(productName)) {
+          newCats[idx].products.push(productName);
+          setLocalCategories(newCats);
+      }
+  };
+  const handleRemoveProductFromCat = (idx, productName) => {
+      const newCats = [...localCategories];
+      newCats[idx].products = newCats[idx].products.filter(p => p !== productName);
+      setLocalCategories(newCats);
+  };
+  const handleSaveCategories = async () => {
+      try {
+          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), {
+              comparisonCategories: localCategories
+          });
+          showAlert('商品比較分類設定已儲存！');
+          setIsEditing(false);
+      } catch (error) {
+          showAlert('儲存設定失敗，請確認網路連線！');
+      }
+  };
+
+  // 渲染獨立的商品卡片
+  const renderProductCard = (vendor, product) => (
+      <div key={`${vendor}-${product.productName}`} className="bg-white rounded-[2rem] p-6 sm:p-8 border border-[#E5E8EB] shadow-sm flex flex-col gap-4 hover:shadow-md transition-shadow">
+         <h4 className="text-xl font-black text-[#1A1D21] border-b-2 border-[#F2F4F7] pb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+               <Tag className="text-[#3B82F6]" size={20} /> {product.productName}
+            </div>
+            <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] px-2.5 py-1 rounded-md tracking-widest">{vendor}</span>
+         </h4>
+         <div className="flex flex-nowrap gap-4 overflow-x-auto hide-scrollbar pb-4 pt-4 px-1">
+           {comparisonData.allStores.map(storeName => {
+              const sp = product.storePrices[storeName];
+              if (!sp) {
+                 return (
+                    <div key={storeName} className="shrink-0 w-32 p-4 rounded-2xl border-2 border-dashed border-[#E5E8EB] bg-[#F8FAFC] flex flex-col items-center justify-center opacity-60">
+                       <span className="text-xs font-bold text-[#9CA3AF] mb-1">{storeName}</span>
+                       <span className="text-xs font-bold text-[#D1D5DB]">尚無定價紀錄</span>
+                    </div>
+                 );
+              }
+
+              const isMin = product.minPrice !== null && sp.price === product.minPrice;
+              const isMax = product.maxPrice !== null && sp.price === product.maxPrice;
+              
+              return (
+                 <div key={storeName} className={`shrink-0 w-[136px] p-4 rounded-2xl border-[2px] flex flex-col relative ${isMin ? 'border-[#A7F3D0] bg-[#ECFDF5]' : isMax ? 'border-[#FECACA] bg-[#FEF2F2]' : 'border-[#E5E8EB] bg-[#FFFFFF] hover:border-[#D1D5DB]'}`}>
+                    {isMin && <div className="absolute -top-3 right-2 bg-[#10B981] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm shadow-[#10B981]/30 border-2 border-white flex items-center gap-0.5"><TrendingDown size={10}/> 最低價</div>}
+                    {isMax && <div className="absolute -top-3 right-2 bg-[#EF4444] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm shadow-[#EF4444]/30 border-2 border-white flex items-center gap-0.5"><TrendingUp size={10}/> 最高價</div>}
+                    
+                    <span className="text-xs font-bold text-[#6B7280] mb-2">{storeName}</span>
+                    <div className="flex items-baseline gap-1 mt-auto">
+                       <span className={`text-2xl font-black ${isMin ? 'text-[#059669]' : isMax ? 'text-[#DC2626]' : 'text-[#1A1D21]'}`}>${sp.price}</span>
+                       <span className="text-xs text-[#9CA3AF] font-bold">/ {sp.unit}</span>
+                    </div>
+                    <span className="text-[10px] text-[#9CA3AF] mt-2 font-bold tracking-widest block bg-white/50 px-2 py-0.5 rounded inline-block">{sp.date}</span>
+                 </div>
+              );
+           })}
+         </div>
+      </div>
+  );
+
+  if (isEditing) {
+    return (
+      <div className="animate-in fade-in duration-500">
+         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+               <h2 className="text-3xl font-extrabold text-[#1A1D21] tracking-tight mb-2">編輯比較分類設定</h2>
+               <p className="text-[#6B7280] font-bold">將同性質的商品歸類，自訂屬於您的「風琴夾」面板。</p>
+            </div>
+            <div className="flex items-center gap-3">
+               <button onClick={() => setIsEditing(false)} className="px-5 py-3 rounded-2xl font-black bg-white border border-[#E5E8EB] text-[#6B7280] hover:bg-[#F2F4F7] transition-colors active:scale-95 shadow-sm">取消</button>
+               <button onClick={handleSaveCategories} className="flex items-center gap-2 px-6 py-3 rounded-2xl font-black bg-[#10B981] text-white hover:bg-[#059669] shadow-sm transition-all active:scale-95"><CheckCircle2 size={20}/> 儲存設定</button>
+            </div>
+         </div>
+
+         <div className="space-y-6">
+            {localCategories.map((cat, catIdx) => (
+               <div key={cat.id} className="bg-[#FFFFFF] p-6 sm:p-8 rounded-[2.5rem] border border-[#E5E8EB] shadow-[0_8px_30px_rgb(0,0,0,0.04)] relative">
+                  <div className="flex justify-between items-center mb-6 border-b-2 border-[#F2F4F7] pb-4">
+                     <div className="flex items-center gap-3 w-full sm:w-2/3">
+                        <div className="p-3 bg-[#EFF6FF] text-[#3B82F6] rounded-xl"><Layers size={20}/></div>
+                        <input 
+                           value={cat.name} 
+                           onChange={e => handleCatNameChange(catIdx, e.target.value)} 
+                           className="text-2xl font-black text-[#1A1D21] border-b-2 border-transparent focus:border-[#3B82F6] outline-none pb-1 px-1 bg-transparent w-full transition-colors" 
+                           placeholder="輸入分類名稱 (如：肉品類、海鮮類)..." 
+                        />
+                     </div>
+                     <button onClick={() => handleRemoveCategory(catIdx)} className="p-2 text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors border border-transparent hover:border-[#FECACA] shadow-sm"><Trash2 size={20}/></button>
+                  </div>
+                  
+                  <div className="flex flex-col gap-4">
+                     <label className="text-sm font-bold text-[#6B7280] uppercase tracking-widest">已加入的商品：</label>
+                     <div className="flex flex-wrap gap-2.5">
+                        {cat.products.map(pName => (
+                           <span key={pName} className="bg-[#EFF6FF] border border-[#BFDBFE] text-[#1E3A8A] px-3.5 py-1.5 rounded-lg text-sm font-black flex items-center gap-2 shadow-sm">
+                              {pName}
+                              <button onClick={() => handleRemoveProductFromCat(catIdx, pName)} className="text-[#3B82F6] hover:text-[#1E3A8A] transition-colors bg-white/50 rounded-full p-0.5"><X size={14} strokeWidth={3}/></button>
+                           </span>
+                        ))}
+                        {cat.products.length === 0 && <span className="text-[#9CA3AF] text-sm font-bold py-2 border-2 border-dashed border-[#E5E8EB] px-4 rounded-xl">尚無加入任何商品</span>}
+                     </div>
+                     
+                     <div className="mt-2 relative">
+                        <select onChange={e => { handleAddProductToCat(catIdx, e.target.value); e.target.value=''; }} className="w-full sm:w-80 bg-[#F8FAFC] border border-[#E5E8EB] text-[#1A1D21] font-bold px-4 py-3.5 rounded-xl outline-none focus:ring-2 focus:ring-[#3B82F6] shadow-inner cursor-pointer appearance-none">
+                           <option value="">＋ 新增現有商品至此分類...</option>
+                           {allUniqueProductNames.filter(p => !cat.products.includes(p)).map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" size={20} />
+                     </div>
+                  </div>
+               </div>
+            ))}
+
+            <button onClick={handleAddCategory} className="w-full py-8 border-2 border-dashed border-[#CBD5E1] rounded-[2.5rem] text-[#64748B] font-black text-lg hover:bg-[#F8FAFC] hover:border-[#94A3B8] transition-colors flex justify-center items-center gap-2 shadow-sm group">
+               <div className="p-2 bg-[#F1F5F9] group-hover:bg-[#E2E8F0] rounded-full transition-colors"><Plus size={24}/></div> 建立新的分類群組
+            </button>
+         </div>
+      </div>
+    );
+  }
+
+  const sectionsToRender = [...categoriesWithItems, uncategorizedItems].filter(cat => cat.items.length > 0);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -1893,10 +2082,17 @@ function AdminProductComparison({ orders, users }) {
           <h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">商品價格比較</h2>
           <p className="text-[#6B7280] font-bold">比較各門市在同一分類下的商品最新進價差異，找出成本落差。</p>
         </div>
+        <button 
+           onClick={() => { setLocalCategories(systemOptions?.comparisonCategories || []); setIsEditing(true); }} 
+           className="flex items-center gap-2 px-5 py-3.5 bg-white border border-[#E5E8EB] rounded-2xl text-[#6B7280] hover:text-[#3B82F6] hover:border-[#3B82F6]/50 shadow-sm transition-all font-black active:scale-95" 
+           title="編輯分類群組設定"
+        >
+           <Settings size={20} /> <span className="hidden sm:inline">分類設定</span>
+        </button>
       </div>
 
       {/* 搜尋列 */}
-      <div className="relative mb-8">
+      <div className="relative mb-4">
          <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
             <Search className="text-[#9CA3AF]" size={24} />
          </div>
@@ -1914,78 +2110,60 @@ function AdminProductComparison({ orders, users }) {
          )}
       </div>
 
-      <div className="space-y-4">
-        {comparisonData.vendors.length === 0 && (
+      {/* 時間篩選器 */}
+      <div className="flex gap-2 overflow-x-auto hide-scrollbar mb-8 pb-2">
+        {filterOptions.map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => setTimeFilter(opt.id)}
+            className={`px-5 py-2.5 rounded-2xl font-black text-sm whitespace-nowrap transition-all shadow-sm active:scale-95 border ${timeFilter === opt.id ? 'bg-[#3B82F6] text-white border-transparent' : 'bg-white text-[#6B7280] border-[#E5E8EB] hover:text-[#1A1D21] hover:border-[#3B82F6]/50'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-8">
+        {sectionsToRender.length === 0 && (
           <div className="text-center py-20 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-[2.5rem] bg-[#FFFFFF]">
-            {searchTerm ? `找不到包含「${searchTerm}」的商品紀錄` : '目前尚無商品定價紀錄可供比較'}
+            {searchTerm ? `找不到包含「${searchTerm}」的商品紀錄` : '在此時間區間內，尚無商品定價紀錄可供比較'}
           </div>
         )}
         
-        {comparisonData.vendors.map(v => {
-          const isExpanded = expandedVendor === v.vendor;
-          
-          return (
-            <div key={v.vendor} className={`bg-[#FFFFFF] rounded-[2.5rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#3B82F6]/30' : 'hover:border-[#9CA3AF]/50'}`}>
-              <button onClick={() => toggleVendor(v.vendor)} className="w-full p-6 sm:p-7 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors">
-                 <div className="flex items-center gap-5">
-                    <div className={`p-4 rounded-2xl flex items-center justify-center font-black transition-colors shrink-0 ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#2C3137]'}`}>
-                       <Store size={24} />
-                    </div>
-                    <div className="text-left">
-                       <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{v.vendor}</h3>
-                       <span className="text-xs font-bold text-[#6B7280] uppercase tracking-widest block mt-1">共 {v.products.length} 項商品比較</span>
-                    </div>
-                 </div>
-                 <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
-                    <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} size={24} />
-                 </div>
-              </button>
-              
-              {isExpanded && (
-                 <div className="p-6 sm:p-8 pt-0 border-t border-[#F2F4F7] bg-[#F2F4F7]/20">
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
-                       {v.products.map(product => (
-                          <div key={product.productName} className="bg-white rounded-[2rem] p-6 border border-[#E5E8EB] shadow-sm flex flex-col gap-4">
-                             <h4 className="text-xl font-black text-[#1A1D21] border-b-2 border-[#F2F4F7] pb-4 flex items-center gap-2">
-                                <Tag className="text-[#3B82F6]" size={20} /> {product.productName}
-                             </h4>
-                             <div className="flex flex-nowrap gap-4 overflow-x-auto hide-scrollbar pb-2">
-                               {comparisonData.allStores.map(storeName => {
-                                  const sp = product.storePrices[storeName];
-                                  if (!sp) {
-                                     return (
-                                        <div key={storeName} className="shrink-0 w-32 p-4 rounded-2xl border-2 border-dashed border-[#E5E8EB] bg-[#F8FAFC] flex flex-col items-center justify-center opacity-60">
-                                           <span className="text-xs font-bold text-[#9CA3AF] mb-1">{storeName}</span>
-                                           <span className="text-xs font-bold text-[#D1D5DB]">尚無定價紀錄</span>
-                                        </div>
-                                     );
-                                  }
+        {/* 動態渲染每一個風琴夾 (自訂分類) */}
+        {sectionsToRender.map(cat => {
+           const isUncat = cat.id === 'uncategorized';
+           // 預設為展開狀態
+           const isOpen = expandedCategories[cat.id] !== false;
 
-                                  const isMin = product.minPrice !== null && sp.price === product.minPrice;
-                                  const isMax = product.maxPrice !== null && sp.price === product.maxPrice;
-                                  
-                                  return (
-                                     <div key={storeName} className={`shrink-0 w-[136px] p-4 rounded-2xl border-[2px] flex flex-col relative ${isMin ? 'border-[#A7F3D0] bg-[#ECFDF5]' : isMax ? 'border-[#FECACA] bg-[#FEF2F2]' : 'border-[#E5E8EB] bg-[#FFFFFF] hover:border-[#D1D5DB]'}`}>
-                                        {isMin && <div className="absolute -top-3 right-2 bg-[#10B981] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm shadow-[#10B981]/30 border-2 border-white flex items-center gap-0.5"><TrendingDown size={10}/> 最低價</div>}
-                                        {isMax && <div className="absolute -top-3 right-2 bg-[#EF4444] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm shadow-[#EF4444]/30 border-2 border-white flex items-center gap-0.5"><TrendingUp size={10}/> 最高價</div>}
-                                        
-                                        <span className="text-xs font-bold text-[#6B7280] mb-2">{storeName}</span>
-                                        <div className="flex items-baseline gap-1 mt-auto">
-                                           <span className={`text-2xl font-black ${isMin ? 'text-[#059669]' : isMax ? 'text-[#DC2626]' : 'text-[#1A1D21]'}`}>${sp.price}</span>
-                                           <span className="text-xs text-[#9CA3AF] font-bold">/ {sp.unit}</span>
-                                        </div>
-                                        <span className="text-[10px] text-[#9CA3AF] mt-2 font-bold tracking-widest block bg-white/50 px-2 py-0.5 rounded inline-block">{sp.date}</span>
-                                     </div>
-                                  );
-                               })}
-                             </div>
-                          </div>
-                       ))}
+           return (
+              <div key={cat.id} className={`bg-white rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border ${isUncat ? 'border-dashed border-[#CBD5E1]' : 'border-[#E5E8EB]'} overflow-hidden transition-all duration-300`}>
+                 <button onClick={() => toggleCategory(cat.id)} className={`w-full px-6 sm:px-8 py-5 flex justify-between items-center border-b transition-colors ${isUncat ? 'bg-[#F8FAFC] border-[#E5E8EB] hover:bg-[#F1F5F9]' : 'bg-[#EFF6FF]/50 border-[#BFDBFE]/50 hover:bg-[#EFF6FF]'}`}>
+                    <div className="flex items-center gap-4">
+                       {!isUncat ? (
+                          <div className="p-3 bg-[#3B82F6] text-white rounded-xl shadow-sm"><Layers size={24} /></div>
+                       ) : (
+                          <div className="p-3 bg-[#E5E8EB] text-[#6B7280] rounded-xl"><Layers size={24} /></div>
+                       )}
+                       <div className="text-left">
+                          <h3 className={`text-xl sm:text-2xl font-black ${isUncat ? 'text-[#64748B]' : 'text-[#1A1D21]'}`}>{cat.name}</h3>
+                          <span className="text-xs font-bold text-[#6B7280] uppercase tracking-widest block mt-1">共 {cat.items.length} 項商品比較</span>
+                       </div>
                     </div>
-                 </div>
-              )}
-            </div>
-          );
+                    <div className={`p-2 rounded-full transition-colors ${isOpen ? (isUncat ? 'bg-[#E5E8EB] text-[#6B7280]' : 'bg-[#BFDBFE] text-[#1E3A8A]') : 'bg-transparent text-[#9CA3AF]'}`}>
+                       <ChevronDown size={24} className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                    </div>
+                 </button>
+
+                 {isOpen && (
+                    <div className="p-6 sm:p-8 bg-[#F8FAFC]/50">
+                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                          {cat.items.map(({ vendor, product }) => renderProductCard(vendor, product))}
+                       </div>
+                    </div>
+                 )}
+              </div>
+           );
         })}
       </div>
     </div>
@@ -2429,6 +2607,65 @@ function AdminStoreOrders({ store, orders, onBack, systemOptions, db, appId, sho
       </div>
     </div>
   )
+}
+
+function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({ ...item });
+
+  const handleSave = () => {
+    onSave(idx, editData);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <tr className="hover:bg-[#F2F4F7]/40 transition-colors group">
+        <td className="py-4 px-3 font-mono text-[#6B7280] text-sm">#{idx + 1}</td>
+        <td className="py-4 px-3">
+          <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]" />
+        </td>
+        <td className="py-4 px-3">
+          <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
+        </td>
+        <td className="py-4 px-3">
+          <select value={editData.unit} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]">
+            {(systemOptions?.units || []).map((u, i) => {
+               const uName = typeof u === 'string' ? u : u.name;
+               return <option key={i} value={uName}>{uName}</option>;
+            })}
+          </select>
+        </td>
+        <td className="py-4 px-3">
+          <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-right outline-none focus:ring-2 focus:ring-[#F05A42]" />
+        </td>
+        <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
+          ${((parseFloat(editData.quantity || editData.orderQty) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
+        </td>
+        <td className="py-4 px-3 text-center">
+          <button onClick={handleSave} className="text-[#10B981] hover:text-[#059669] font-black mr-3 active:scale-95 transition-all">儲存</button>
+          <button onClick={() => setIsEditing(false)} className="text-[#9CA3AF] hover:text-[#1A1D21] font-bold active:scale-95 transition-all">取消</button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="hover:bg-[#F2F4F7]/40 transition-colors group">
+      <td className="py-4 px-3 font-mono text-[#9CA3AF] text-sm">#{idx + 1}</td>
+      <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.name}</td>
+      <td className="py-4 px-3 text-center font-black text-[#1A1D21] text-lg">{item.orderQty || item.quantity}</td>
+      <td className="py-4 px-3 text-left font-bold text-[#6B7280]">{item.unit}</td>
+      <td className="py-4 px-3 text-right font-black text-[#F05A42] text-lg">${item.price || 0}</td>
+      <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
+        ${((parseFloat(item.orderQty || item.quantity) || 0) * (parseFloat(item.price) || 0)).toLocaleString()}
+      </td>
+      <td className="py-4 px-3 text-center flex justify-center gap-2">
+        <button onClick={() => setIsEditing(true)} className="p-2 text-[#9CA3AF] hover:text-[#3B82F6] hover:bg-[#EFF6FF] rounded-xl transition-colors"><Edit2 size={18} /></button>
+        <button onClick={() => onRemove(idx)} className="p-2 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors"><Trash2 size={18} /></button>
+      </td>
+    </tr>
+  );
 }
 
 function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConfirm }) {
