@@ -117,6 +117,55 @@ export default function App() {
   const trackingProducts = systemOptions?.trackingProducts || initialProducts;
   const dynamicAbnormalReasons = systemOptions?.abnormalReasons || initialAbnormalReasons;
 
+  // 總部導覽列排序設定 (預設順序與圖示對應)
+  const defaultAdminNav = useMemo(() => [
+    { id: 'admin_vendors', label: '門店記帳', icon: 'Layers' },
+    { id: 'admin_abnormal', label: '異常通報', icon: 'AlertTriangle' },
+    { id: 'admin_compensation', label: '退貨補償', icon: 'RefreshCcw' },
+    { id: 'admin_expiry', label: '食材有效期線', icon: 'CalendarDays' },
+    { id: 'admin_product_comparison', label: '商品比較', icon: 'Store' }, // 更新為商品比較
+    { id: 'admin_charts', label: '圖表分析', icon: 'PieChart' },
+    { id: 'admin_price_trends', label: '上漲降價', icon: 'TrendingUp' }
+  ], []);
+
+  const navIcons = { Layers, AlertTriangle, RefreshCcw, CalendarDays, Store, PieChart, TrendingUp };
+  const [isEditingNav, setIsEditingNav] = useState(false);
+  const [localNavOrder, setLocalNavOrder] = useState([]);
+  const [draggedNavId, setDraggedNavId] = useState(null);
+  const [dragOverNavId, setDragOverNavId] = useState(null);
+
+  // 當非編輯模式或系統設定變更時，同步最新的導覽列順序
+  useEffect(() => {
+    if (!isEditingNav) {
+      setLocalNavOrder(systemOptions?.adminNavOrder || defaultAdminNav);
+    }
+  }, [systemOptions?.adminNavOrder, isEditingNav, defaultAdminNav]);
+
+  // 手機版/按鈕式左右移動邏輯
+  const moveNav = (index, direction) => {
+    const newOrder = [...localNavOrder];
+    if (direction === -1 && index > 0) {
+      [newOrder[index-1], newOrder[index]] = [newOrder[index], newOrder[index-1]];
+    } else if (direction === 1 && index < newOrder.length - 1) {
+      [newOrder[index+1], newOrder[index]] = [newOrder[index], newOrder[index+1]];
+    }
+    setLocalNavOrder(newOrder);
+  };
+
+  // 電腦版滑鼠拖曳邏輯 (Drag and Drop)
+  const handleNavDrop = (e, targetId) => {
+    e.preventDefault();
+    if (!draggedNavId || draggedNavId === targetId) return;
+    const newOrder = [...localNavOrder];
+    const draggedIdx = newOrder.findIndex(n => n.id === draggedNavId);
+    const targetIdx = newOrder.findIndex(n => n.id === targetId);
+    const [draggedItem] = newOrder.splice(draggedIdx, 1);
+    newOrder.splice(targetIdx, 0, draggedItem);
+    setLocalNavOrder(newOrder);
+    setDraggedNavId(null);
+    setDragOverNavId(null);
+  };
+
   // ==========================================
   //  連線 Firebase 並即時監聽資料
   // ==========================================
@@ -193,8 +242,9 @@ export default function App() {
   const dynamicVendors = useMemo(() => {
     const categories = new Set();
     ordersDb.forEach(o => {
-        const cat = o.id.split('-')[1];
-        if (cat) categories.add(cat);
+        // 統一過濾邏輯：若單號格式異常，歸類為「其他分類」，確保不會有幽靈單據被遺漏
+        const cat = o.id.split('-')[1] || '其他分類';
+        categories.add(cat);
     });
     return Array.from(categories).map(c => ({ id: c, name: c }));
   }, [ordersDb]);
@@ -349,75 +399,77 @@ export default function App() {
   if (currentView === 'login' || currentView === 'register') {
     const storeUsers = usersDb.filter(u => u.role !== 'admin');
     return (
-      <div className={`min-h-screen font-sans text-[#1A1D21] bg-[#E5E8EB] ${viewMode === 'desktop' ? 'overflow-x-auto' : ''}`}>
-        <div className={`relative overflow-hidden min-h-screen flex items-center justify-center transition-all duration-300 bg-[#F2F4F7] mx-auto p-4 ${viewMode === 'mobile' ? 'max-w-[430px] shadow-2xl border-x border-[#D1D5DB]' : viewMode === 'desktop' ? 'min-w-[1200px]' : 'w-full'}`}>
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#FFD5CC] rounded-full mix-blend-multiply filter blur-[100px] opacity-60 animate-blob"></div>
-          <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#E5E8EB] rounded-full mix-blend-multiply filter blur-[100px] opacity-60 animate-blob animation-delay-2000"></div>
-          <div className="absolute bottom-[-20%] left-[20%] w-[40%] h-[40%] bg-[#FFE9E5] rounded-full mix-blend-multiply filter blur-[100px] opacity-60 animate-blob animation-delay-4000"></div>
+      <div className={`h-screen w-full font-sans text-[#1A1D21] bg-[#E5E8EB] flex justify-center ${viewMode === 'desktop' ? 'overflow-x-auto' : 'overflow-hidden'}`} style={{ height: '100dvh' }}>
+        <div className={`relative overflow-y-auto overflow-x-hidden flex flex-col h-full transition-all duration-300 bg-[#F2F4F7] ${viewMode === 'mobile' ? 'w-full max-w-[430px] shadow-2xl border-x border-[#D1D5DB]' : viewMode === 'desktop' ? 'w-full min-w-[1200px]' : 'w-full'}`}>
+          <div className="flex-1 flex items-center justify-center p-4 min-h-full relative z-10">
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#FFD5CC] rounded-full mix-blend-multiply filter blur-[100px] opacity-60 animate-blob pointer-events-none"></div>
+            <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#E5E8EB] rounded-full mix-blend-multiply filter blur-[100px] opacity-60 animate-blob animation-delay-2000 pointer-events-none"></div>
+            <div className="absolute bottom-[-20%] left-[20%] w-[40%] h-[40%] bg-[#FFE9E5] rounded-full mix-blend-multiply filter blur-[100px] opacity-60 animate-blob animation-delay-4000 pointer-events-none"></div>
 
-          {uiState.showAdminLogin && (
-            <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-              <div className="bg-[#FFFFFF] rounded-[2rem] p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
-                <h3 className="text-lg font-bold text-[#1A1D21] mb-4 text-center">總公司後台登入</h3>
-                {authError && <div className="text-[#EF4444] text-sm text-center font-bold mb-4">{authError}</div>}
-                <input type="password" autoFocus className="w-full px-5 py-3.5 bg-[#F2F4F7] border-2 border-[#E5E8EB] rounded-2xl mb-4 focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none font-bold text-center tracking-widest text-lg" placeholder="請輸入後台密碼"
-                  onChange={e => {
-                    if (e.target.value === '0204') {
-                      setCurrentUser({ id: 'admin', role: 'admin', name: '總管理處', username: 'admin' });
-                      setCurrentView('admin_vendors'); 
-                      setAuthError(''); setUiState(prev => ({ ...prev, showAdminLogin: false }));
-                    } else if (e.target.value.length >= 4) { setAuthError('密碼錯誤'); } else { setAuthError(''); }
-                  }}
-                />
-                <button onClick={() => { setUiState(prev => ({ ...prev, showAdminLogin: false })); setAuthError(''); }} className="w-full bg-[#F2F4F7] hover:bg-[#E5E8EB] text-[#6B7280] py-3.5 rounded-2xl font-black transition-colors">取消</button>
+            {uiState.showAdminLogin && (
+              <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+                <div className="bg-[#FFFFFF] rounded-[2rem] p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                  <h3 className="text-lg font-bold text-[#1A1D21] mb-4 text-center">總公司後台登入</h3>
+                  {authError && <div className="text-[#EF4444] text-sm text-center font-bold mb-4">{authError}</div>}
+                  <input type="password" autoFocus className="w-full px-5 py-3.5 bg-[#F2F4F7] border-2 border-[#E5E8EB] rounded-2xl mb-4 focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none font-bold text-center tracking-widest text-lg" placeholder="請輸入後台密碼"
+                    onChange={e => {
+                      if (e.target.value === '0204') {
+                        setCurrentUser({ id: 'admin', role: 'admin', name: '總管理處', username: 'admin' });
+                        setCurrentView('admin_vendors'); 
+                        setAuthError(''); setUiState(prev => ({ ...prev, showAdminLogin: false }));
+                      } else if (e.target.value.length >= 4) { setAuthError('密碼錯誤'); } else { setAuthError(''); }
+                    }}
+                  />
+                  <button onClick={() => { setUiState(prev => ({ ...prev, showAdminLogin: false })); setAuthError(''); }} className="w-full bg-[#F2F4F7] hover:bg-[#E5E8EB] text-[#6B7280] py-3.5 rounded-2xl font-black transition-colors">取消</button>
+                </div>
               </div>
-            </div>
-          )}
-
-          <div className="bg-[#FFFFFF]/90 backdrop-blur-2xl p-8 sm:p-10 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] w-full max-w-md border border-[#E5E8EB] relative z-10">
-            <div className="text-center mb-8">
-              <div onClick={() => { setUiState(prev => ({ ...prev, showAdminLogin: true })); setAuthError(''); }} className="bg-gradient-to-tr from-[#F05A42] to-[#FF9C8A] w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-md cursor-pointer hover:scale-105 transition-transform" title="點擊登入總公司">
-                <Package className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight text-[#1A1D21]">智慧進貨 ERP</h1>
-              <p className="text-sm text-[#6B7280] mt-2 font-medium">{isRegistering ? '請填寫資料註冊新門店' : '與點貨系統資料同步連線中'}</p>
-            </div>
-
-            {authError && !uiState.showAdminLogin && <div className="bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] p-3 rounded-2xl mb-6 text-sm text-center font-bold animate-in fade-in zoom-in duration-300">{authError}</div>}
-
-            {isRegistering ? (
-              <form onSubmit={handleRegister} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">門店名稱</label>
-                  <input type="text" required className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-semibold" value={regForm.branchName} onChange={e => setRegForm({...regForm, branchName: e.target.value})} placeholder="請輸入您的門店名稱" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">設定門店密碼 (需為 6 位數字)</label>
-                  <input type="password" required maxLength={6} pattern="\d{6}" className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-semibold tracking-widest" value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value.replace(/\D/g, '')})} placeholder="例如: 123456" />
-                </div>
-                <button type="submit" className="w-full bg-[#1A1D21] text-white py-4 px-4 rounded-2xl hover:bg-[#111418] shadow-md transition-all font-bold mt-8 active:scale-95">完成註冊</button>
-                <div className="text-center mt-4"><button type="button" onClick={() => { setIsRegistering(false); setAuthError(''); }} className="text-sm font-bold text-[#F05A42] hover:text-[#D94A34]">返回登入</button></div>
-              </form>
-            ) : (
-              <form onSubmit={handleLogin} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">選擇註冊門店</label>
-                  <div className="relative">
-                    <select required className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-bold appearance-none cursor-pointer" value={authForm.selectedStore} onChange={e => setAuthForm({...authForm, selectedStore: e.target.value})}>
-                      <option value="" disabled>請選擇門店名稱...</option>
-                      {storeUsers.map(u => <option key={u.username} value={u.branchName}>{u.branchName}</option>)}
-                    </select>
-                    <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-[#9CA3AF] pointer-events-none" size={20} />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">輸入門店密碼</label>
-                  <input type="password" required className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-semibold tracking-widest" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} placeholder="請輸入對應的 6 位密碼" />
-                </div>
-                <button type="submit" className="w-full bg-[#1A1D21] text-white py-4 px-4 rounded-2xl hover:bg-[#111418] shadow-md transition-all font-bold mt-8 active:scale-95">門市登入</button>
-                <div className="text-center mt-4"><button type="button" onClick={() => { setIsRegistering(true); setAuthError(''); }} className="text-sm font-bold text-[#6B7280] hover:text-[#1A1D21]">還沒有門店帳號？ <span className="text-[#F05A42]">立即註冊</span></button></div>
-              </form>
             )}
+
+            <div className="bg-[#FFFFFF]/90 backdrop-blur-2xl p-8 sm:p-10 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] w-full max-w-md border border-[#E5E8EB] relative z-10">
+              <div className="text-center mb-8">
+                <div onClick={() => { setUiState(prev => ({ ...prev, showAdminLogin: true })); setAuthError(''); }} className="bg-gradient-to-tr from-[#F05A42] to-[#FF9C8A] w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-md cursor-pointer hover:scale-105 transition-transform" title="點擊登入總公司">
+                  <Package className="w-8 h-8 text-white" />
+                </div>
+                <h1 className="text-2xl font-bold tracking-tight text-[#1A1D21]">智慧進貨 ERP</h1>
+                <p className="text-sm text-[#6B7280] mt-2 font-medium">{isRegistering ? '請填寫資料註冊新門店' : '與點貨系統資料同步連線中'}</p>
+              </div>
+
+              {authError && !uiState.showAdminLogin && <div className="bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] p-3 rounded-2xl mb-6 text-sm text-center font-bold animate-in fade-in zoom-in duration-300">{authError}</div>}
+
+              {isRegistering ? (
+                <form onSubmit={handleRegister} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">門店名稱</label>
+                    <input type="text" required className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-semibold" value={regForm.branchName} onChange={e => setRegForm({...regForm, branchName: e.target.value})} placeholder="請輸入您的門店名稱" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">設定門店密碼 (需為 6 位數字)</label>
+                    <input type="password" required maxLength={6} pattern="\d{6}" className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-semibold tracking-widest" value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value.replace(/\D/g, '')})} placeholder="例如: 123456" />
+                  </div>
+                  <button type="submit" className="w-full bg-[#1A1D21] text-white py-4 px-4 rounded-2xl hover:bg-[#111418] shadow-md transition-all font-bold mt-8 active:scale-95">完成註冊</button>
+                  <div className="text-center mt-4"><button type="button" onClick={() => { setIsRegistering(false); setAuthError(''); }} className="text-sm font-bold text-[#F05A42] hover:text-[#D94A34]">返回登入</button></div>
+                </form>
+              ) : (
+                <form onSubmit={handleLogin} className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">選擇註冊門店</label>
+                    <div className="relative">
+                      <select required className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-bold appearance-none cursor-pointer" value={authForm.selectedStore} onChange={e => setAuthForm({...authForm, selectedStore: e.target.value})}>
+                        <option value="" disabled>請選擇門店名稱...</option>
+                        {storeUsers.map(u => <option key={u.username} value={u.branchName}>{u.branchName}</option>)}
+                      </select>
+                      <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-[#9CA3AF] pointer-events-none" size={20} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-2 ml-1">輸入門店密碼</label>
+                    <input type="password" required className="w-full px-5 py-3.5 bg-[#FFFFFF] border-2 border-[#E5E8EB] rounded-2xl focus:ring-4 focus:ring-[#F05A42]/20 focus:border-[#F05A42] outline-none transition-all text-[#1A1D21] font-semibold tracking-widest" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} placeholder="請輸入對應的 6 位密碼" />
+                  </div>
+                  <button type="submit" className="w-full bg-[#1A1D21] text-white py-4 px-4 rounded-2xl hover:bg-[#111418] shadow-md transition-all font-bold mt-8 active:scale-95">門市登入</button>
+                  <div className="text-center mt-4"><button type="button" onClick={() => { setIsRegistering(true); setAuthError(''); }} className="text-sm font-bold text-[#6B7280] hover:text-[#1A1D21]">還沒有門店帳號？ <span className="text-[#F05A42]">立即註冊</span></button></div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
         <LayoutToggler />
@@ -426,8 +478,8 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen font-sans text-[#1A1D21] bg-[#E5E8EB] ${viewMode === 'desktop' ? 'overflow-x-auto' : ''}`}>
-      <div className={`flex flex-col min-h-screen mx-auto transition-all duration-300 relative bg-[#F2F4F7] ${viewMode === 'mobile' ? 'max-w-[430px] shadow-2xl border-x border-[#D1D5DB]' : viewMode === 'desktop' ? 'min-w-[1200px]' : 'w-full'}`}>
+    <div className={`h-screen w-full font-sans text-[#1A1D21] bg-[#E5E8EB] flex justify-center ${viewMode === 'desktop' ? 'overflow-x-auto' : 'overflow-hidden'}`} style={{ height: '100dvh' }}>
+      <div className={`flex flex-col h-full transition-all duration-300 relative bg-[#F2F4F7] ${viewMode === 'mobile' ? 'w-full max-w-[430px] shadow-2xl border-x border-[#D1D5DB]' : viewMode === 'desktop' ? 'w-full min-w-[1200px]' : 'w-full'}`}>
         
         {uiState.alert && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -449,7 +501,7 @@ export default function App() {
           </div>
         )}
 
-        <header className="bg-[#FFFFFF]/90 backdrop-blur-md border-b border-[#E5E8EB] px-4 py-3 sm:px-6 sm:py-4 flex justify-between items-center sticky top-0 z-30 shadow-sm">
+        <header className="shrink-0 bg-[#FFFFFF]/90 backdrop-blur-md border-b border-[#E5E8EB] px-4 py-3 sm:px-6 sm:py-4 flex justify-between items-center z-30 shadow-sm">
           <div className="flex items-center gap-3">
             {currentUser?.role === 'admin' && (
               <button onClick={() => setCurrentView('admin_settings')} className="p-2.5 bg-[#FFFFFF] text-[#6B7280] hover:text-[#F05A42] hover:bg-[#F2F4F7] rounded-2xl transition-all shadow-sm border border-[#E5E8EB] active:scale-95" title="系統設定"><Settings size={20} /></button>
@@ -487,7 +539,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className={`flex-1 p-4 sm:p-6 lg:p-8 w-full mx-auto pb-32 ${viewMode === 'auto' ? 'max-w-7xl' : ''}`}>
+        <main className={`flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 lg:p-8 w-full mx-auto pb-40 ${viewMode === 'auto' ? 'max-w-7xl' : ''}`}>
           
           {/* 門市端視圖 */}
           {currentView === 'store_dashboard' && <StoreDashboard currentUser={currentUser} vendors={dynamicVendors} orders={ordersDb} onSelectVendor={(v) => { setSelectedVendor(v); setCurrentView('store_vendor_detail'); }} />}
@@ -499,10 +551,10 @@ export default function App() {
           {/* 總部端視圖切換 */}
           {currentView === 'admin_vendors' && <AdminVendorOverview orders={ordersDb} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
-          {currentView === 'admin_dashboard' && <AdminDashboard users={usersDb} orders={ordersDb} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
+          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
           {currentView === 'admin_price_trends' && <AdminPriceTrends orders={ordersDb} users={usersDb} />}
-          {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
+          {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
           {currentView === 'admin_abnormal' && <AdminAbnormalOverview orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_compensation' && <AdminCompensationOverview compensations={compensationsDb} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
 
@@ -510,7 +562,7 @@ export default function App() {
         
         {/* 門市專屬底部導覽列 (深色質感) */}
         {currentUser?.role === 'store' && (
-          <div className="sticky bottom-0 left-0 w-full bg-[#1A1D21]/95 backdrop-blur-xl border-t border-[#2C3137] flex justify-around items-center pb-5 pt-3 px-2 sm:px-6 shadow-[0_-8px_30px_rgba(0,0,0,0.2)] z-40 rounded-t-[2.5rem] mt-auto overflow-x-auto hide-scrollbar">
+          <div className="shrink-0 bg-[#1A1D21]/95 backdrop-blur-xl border-t border-[#2C3137] flex justify-around items-center pb-5 pt-3 px-2 sm:px-6 shadow-[0_-8px_30px_rgba(0,0,0,0.2)] z-40 rounded-t-[2.5rem] overflow-x-auto hide-scrollbar">
             <button onClick={() => setCurrentView('store_dashboard')} className={`shrink-0 flex flex-col items-center gap-1.5 transition-all px-2 ${currentView === 'store_dashboard' || currentView === 'store_vendor_detail' ? 'text-[#F05A42] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'store_dashboard' || currentView === 'store_vendor_detail' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><Briefcase size={22} strokeWidth={currentView === 'store_dashboard' || currentView === 'store_vendor_detail' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">各廠商分類</span></button>
             <button onClick={() => setCurrentView('store_abnormal')} className={`shrink-0 flex flex-col items-center gap-1.5 transition-all px-2 relative ${currentView === 'store_abnormal' ? 'text-[#EF4444] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'store_abnormal' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><AlertTriangle size={22} strokeWidth={currentView === 'store_abnormal' ? 2.5 : 2} className={storeAbnormalCount > 0 ? 'animate-pulse text-[#EF4444]' : ''} /></div>{storeAbnormalCount > 0 && <span className="absolute top-0 right-1 sm:right-2 bg-[#EF4444] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#1A1D21] shadow-sm">{storeAbnormalCount}</span>}<span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">異常通知</span></button>
             <button onClick={() => setCurrentView('store_compensation')} className={`shrink-0 flex flex-col items-center gap-1.5 transition-all px-2 relative ${currentView === 'store_compensation' ? 'text-[#8B5CF6] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'store_compensation' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><RefreshCcw size={22} strokeWidth={currentView === 'store_compensation' ? 2.5 : 2} className={storeCompensationCount > 0 ? 'animate-pulse text-[#8B5CF6]' : ''} /></div>{storeCompensationCount > 0 && <span className="absolute top-0 right-1 sm:right-2 bg-[#8B5CF6] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#1A1D21] shadow-sm">{storeCompensationCount}</span>}<span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">退貨補償</span></button>
@@ -518,16 +570,82 @@ export default function App() {
           </div>
         )}
 
-        {/* 總部專屬底部導覽列 (深色質感) */}
+        {/* 總部專屬底部導覽列 (深色質感 - 具備自訂排序功能) */}
         {currentUser?.role === 'admin' && (
-          <div className="sticky bottom-0 left-0 w-full bg-[#1A1D21]/95 backdrop-blur-xl border-t border-[#2C3137] flex justify-between sm:justify-around items-center pb-5 pt-3 px-2 sm:px-6 shadow-[0_-8px_30px_rgba(0,0,0,0.2)] z-40 rounded-t-[2.5rem] mt-auto overflow-x-auto hide-scrollbar">
-            <button onClick={() => setCurrentView('admin_vendors')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_vendors' || currentView === 'admin_settings' ? 'text-[#F05A42] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_vendors' || currentView === 'admin_settings' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><Layers size={22} strokeWidth={currentView === 'admin_vendors' || currentView === 'admin_settings' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">各廠商分類</span></button>
-            <button onClick={() => setCurrentView('admin_abnormal')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 relative ${currentView === 'admin_abnormal' ? 'text-[#EF4444] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_abnormal' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><AlertTriangle size={22} strokeWidth={currentView === 'admin_abnormal' ? 2.5 : 2} className={adminAbnormalCount > 0 ? 'animate-pulse text-[#EF4444]' : ''} /></div>{adminAbnormalCount > 0 && <span className="absolute top-0 right-0 sm:right-1 bg-[#EF4444] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#1A1D21] shadow-sm">{adminAbnormalCount}</span>}<span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">異常通報</span></button>
-            <button onClick={() => setCurrentView('admin_compensation')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 relative ${currentView === 'admin_compensation' ? 'text-[#8B5CF6] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_compensation' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><RefreshCcw size={22} strokeWidth={currentView === 'admin_compensation' ? 2.5 : 2} className={adminCompensationCount > 0 ? 'animate-pulse text-[#8B5CF6]' : ''} /></div>{adminCompensationCount > 0 && <span className="absolute top-0 right-0 sm:right-1 bg-[#8B5CF6] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#1A1D21] shadow-sm">{adminCompensationCount}</span>}<span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">退貨補償</span></button>
-            <button onClick={() => setCurrentView('admin_expiry')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_expiry' ? 'text-[#F59E0B] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_expiry' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><CalendarDays size={22} strokeWidth={currentView === 'admin_expiry' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">食材有效期線</span></button>
-            <button onClick={() => setCurrentView('admin_dashboard')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_dashboard' ? 'text-white scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_dashboard' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><Store size={22} strokeWidth={currentView === 'admin_dashboard' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">各店叫貨額</span></button>
-            <button onClick={() => setCurrentView('admin_charts')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_charts' ? 'text-[#10B981] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_charts' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><PieChart size={22} strokeWidth={currentView === 'admin_charts' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">圖表分析</span></button>
-            <button onClick={() => setCurrentView('admin_price_trends')} className={`shrink-0 flex flex-col items-center gap-1 transition-all px-2 ${currentView === 'admin_price_trends' ? 'text-[#3B82F6] scale-105' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}><div className={`p-2 rounded-2xl ${currentView === 'admin_price_trends' ? 'bg-[#2C3137]' : 'bg-transparent'}`}><TrendingUp size={22} strokeWidth={currentView === 'admin_price_trends' ? 2.5 : 2} /></div><span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">上漲降價</span></button>
+          <div className="shrink-0 relative z-40">
+             {/* 浮動編輯/儲存按鈕 */}
+             <div className="absolute right-4 bottom-[110%] flex flex-col items-center gap-3">
+                {isEditingNav && (
+                   <button onClick={async () => {
+                      try {
+                         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'hotpot_system', 'options'), { adminNavOrder: localNavOrder }, { merge: true });
+                         setIsEditingNav(false);
+                         showAlert('導覽列排序已儲存！');
+                      } catch (e) {
+                         showAlert('儲存失敗，請檢查網路連線。');
+                      }
+                   }} className="bg-[#10B981] text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(16,185,129,0.4)] border border-[#059669] flex items-center justify-center animate-bounce hover:bg-[#059669] active:scale-95 transition-all" title="儲存排序">
+                      <CheckCircle2 size={24} strokeWidth={3} />
+                   </button>
+                )}
+                <button onClick={() => {
+                    if (isEditingNav) {
+                        setLocalNavOrder(systemOptions?.adminNavOrder || defaultAdminNav);
+                        setIsEditingNav(false);
+                    } else {
+                        setIsEditingNav(true);
+                    }
+                }} className="bg-[#1A1D21] text-white p-3.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.3)] border border-[#2C3137] flex flex-col items-center gap-1 hover:bg-[#111418] active:scale-95 transition-all">
+                   {isEditingNav ? <X size={20} className="text-[#EF4444]" /> : <Menu size={20} className="text-[#9CA3AF]" />}
+                </button>
+             </div>
+             
+             <div className="bg-[#1A1D21]/95 backdrop-blur-xl border-t border-[#2C3137] flex justify-between sm:justify-around items-end pb-5 pt-3 px-2 sm:px-6 shadow-[0_-8px_30px_rgba(0,0,0,0.2)] rounded-t-[2.5rem] overflow-x-auto hide-scrollbar min-h-[85px]">
+                {localNavOrder.map((navItem, index) => {
+                   const Icon = navIcons[navItem.icon] || Store;
+                   const isActive = currentView === navItem.id || (navItem.id === 'admin_vendors' && currentView === 'admin_settings');
+                   let alertCount = 0;
+                   if (navItem.id === 'admin_abnormal') alertCount = adminAbnormalCount;
+                   if (navItem.id === 'admin_compensation') alertCount = adminCompensationCount;
+
+                   let colorClass = 'text-[#F05A42]';
+                   if (navItem.id === 'admin_abnormal') colorClass = 'text-[#EF4444]';
+                   if (navItem.id === 'admin_compensation') colorClass = 'text-[#8B5CF6]';
+                   if (navItem.id === 'admin_expiry') colorClass = 'text-[#F59E0B]';
+                   if (navItem.id === 'admin_charts') colorClass = 'text-[#10B981]';
+                   if (navItem.id === 'admin_price_trends') colorClass = 'text-[#3B82F6]';
+                   if (navItem.id === 'admin_product_comparison') colorClass = 'text-white';
+
+                   return (
+                      <div 
+                         key={navItem.id}
+                         draggable={isEditingNav}
+                         onDragStart={() => setDraggedNavId(navItem.id)}
+                         onDragOver={(e) => { e.preventDefault(); setDragOverNavId(navItem.id); }}
+                         onDrop={(e) => handleNavDrop(e, navItem.id)}
+                         onDragEnd={() => { setDraggedNavId(null); setDragOverNavId(null); }}
+                         className={`relative shrink-0 flex flex-col items-center gap-1 transition-all px-2 sm:px-3 ${isEditingNav ? 'cursor-grab active:cursor-grabbing hover:bg-white/5 rounded-xl py-1' : ''} ${draggedNavId === navItem.id ? 'opacity-40 scale-95' : ''} ${dragOverNavId === navItem.id && draggedNavId !== navItem.id ? 'bg-white/10 rounded-xl scale-105' : ''}`}
+                      >
+                         {isEditingNav && (
+                            <div className="flex w-full justify-center gap-2 bg-[#2C3137] rounded-md px-1.5 py-1 mb-1.5 shadow-inner border border-[#4B5563]">
+                               <button onClick={() => moveNav(index, -1)} disabled={index === 0} className="p-0.5 disabled:opacity-30 hover:bg-[#4B5563] rounded transition-colors"><ChevronLeft size={16} className="text-white"/></button>
+                               <button onClick={() => moveNav(index, 1)} disabled={index === localNavOrder.length - 1} className="p-0.5 disabled:opacity-30 hover:bg-[#4B5563] rounded transition-colors"><ChevronRight size={16} className="text-white"/></button>
+                            </div>
+                         )}
+                         <button 
+                            onClick={() => !isEditingNav && setCurrentView(navItem.id)} 
+                            className={`flex flex-col items-center gap-1 transition-all w-full ${isActive && !isEditingNav ? `${colorClass} scale-105` : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}
+                         >
+                            <div className={`p-2 rounded-2xl relative ${isActive && !isEditingNav ? 'bg-[#2C3137]' : 'bg-transparent'} ${isEditingNav ? 'animate-pulse' : ''}`}>
+                               <Icon size={22} strokeWidth={isActive ? 2.5 : 2} className={alertCount > 0 && !isEditingNav ? 'animate-pulse' : ''} />
+                               {alertCount > 0 && !isEditingNav && <span className={`absolute top-0 right-0 sm:right-1 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-[#1A1D21] shadow-sm ${navItem.id === 'admin_abnormal' ? 'bg-[#EF4444]' : 'bg-[#8B5CF6]'}`}>{alertCount}</span>}
+                            </div>
+                            <span className="text-[10px] sm:text-[11px] font-black tracking-wider whitespace-nowrap">{navItem.label}</span>
+                         </button>
+                      </div>
+                   );
+                })}
+             </div>
           </div>
         )}
 
@@ -540,7 +658,8 @@ export default function App() {
 // ==========================================
 // 總部設定：商品進貨單位管理 & 效期追蹤商品管理 & 異常原因管理
 // ==========================================
-function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBack, initialProducts, initialAbnormalReasons, initialCompensationProducts }) {
+function AdminSettings({ systemOptions, users, db, appId, showAlert, showConfirm, onBack, initialProducts, initialAbnormalReasons, initialCompensationProducts }) {
+  const [showPasswords, setShowPasswords] = useState(false);
   const [newUnitInput, setNewUnitInput] = useState('');
   
   const [newProductInput, setNewProductInput] = useState('');
@@ -677,6 +796,10 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
     } catch(e) { showAlert('修改退貨商品名稱失敗'); }
   };
 
+  if (showPasswords) {
+     return <AdminStorePasswords users={users} onBack={() => setShowPasswords(false)} />;
+  }
+
   return (
     <div className="animate-in slide-in-from-right-8 duration-500">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -687,6 +810,22 @@ function AdminSettings({ systemOptions, db, appId, showAlert, showConfirm, onBac
         <button onClick={onBack} className="flex items-center justify-center gap-2 text-[#6B7280] font-bold hover:text-[#1A1D21] transition-colors bg-[#FFFFFF] px-5 py-3 rounded-2xl shadow-sm border border-[#E5E8EB] active:scale-95">
           <ChevronLeft size={20} />返回
         </button>
+      </div>
+
+      {/* 門店帳密查詢 (移至系統設定此處) */}
+      <div className="bg-[#FFFFFF] rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent p-7 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-[#F2F4F7] rounded-xl"><ShieldUser className="text-[#F05A42]" size={24} /></div>
+            <div>
+              <h3 className="font-black text-[#1A1D21] text-xl">門店帳密管理</h3>
+              <p className="text-sm font-bold text-[#6B7280] mt-1">查詢各門店登入密碼，請妥善保管</p>
+            </div>
+          </div>
+          <button onClick={() => setShowPasswords(true)} className="px-6 py-3.5 bg-[#F05A42] text-white font-bold rounded-xl hover:bg-[#D94A34] transition-colors shadow-sm active:scale-95 whitespace-nowrap">
+            查詢密碼
+          </button>
+        </div>
       </div>
 
       {/* 新增：退貨補償商品清單管理 */}
@@ -1386,7 +1525,7 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
     const isStoreSpecific = typeof activeVendor === 'object';
     const vendorName = isStoreSpecific ? activeVendor.vendorName : activeVendor;
     
-    let vOrders = orders.filter(o => o.id.includes(`-${vendorName}-`));
+    let vOrders = orders.filter(o => (o.id.split('-')[1] || '其他分類') === vendorName);
     if (isStoreSpecific && activeVendor.storeUsername) {
        vOrders = vOrders.filter(o => o.branchUsername === activeVendor.storeUsername || o.branchName === activeVendor.storeName);
     }
@@ -1417,48 +1556,72 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
     )
   }
 
-  // 計算全域(所有門店)的廠商統計資料
+  // 計算全域(所有門店)的廠商統計資料，並檢查是否含有未輸入單價的單據
   const globalVendorStats = vendors.map(v => {
-    const vOrders = orders.filter(o => o.id.includes(`-${v.id}-`));
+    const vOrders = orders.filter(o => (o.id.split('-')[1] || '其他分類') === v.name);
     const totalAmt = vOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-    return { ...v, orderCount: vOrders.length, totalAmount: totalAmt };
+    // 檢查是否有單價尚未輸入 (或等於 0)
+    const hasUnpriced = vOrders.some(o => o.items?.some(it => !it.price || parseFloat(it.price) === 0));
+    return { ...v, orderCount: vOrders.length, totalAmount: totalAmt, hasUnpriced };
   });
 
   return (
     <div className="animate-in fade-in duration-500">
-      <div className="mb-8">
-         <h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">各廠商分類總覽</h2>
-         <p className="text-[#6B7280] font-bold">利用下方風琴式選單分類各門店單據，或查看全域加總。</p>
+      {/* 移除紅圈的文字，並加入連線門市數卡片 */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        <div className="bg-[#FFFFFF] p-5 sm:p-6 rounded-[2rem] shadow-sm border border-[#E5E8EB] flex items-center gap-5 relative overflow-hidden group">
+          <div className="p-4 bg-[#F2F4F7] text-[#2C3137] rounded-2xl">
+            <Store size={28} />
+          </div>
+          <div>
+            <div className="text-[#6B7280] text-xs font-bold uppercase tracking-widest mb-1">連線門市數</div>
+            <div className="text-3xl font-black text-[#1A1D21]">{stores.length} 間</div>
+          </div>
+        </div>
       </div>
 
       {/* 依門店分類：風琴式 UI 設計 */}
       <div className="mb-12">
         <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
-          <Store className="text-[#3B82F6]" /> 依門店分類檢視 (風琴式展開)
+          <Store className="text-[#3B82F6]" /> 各門店廠商金額輸入
         </h3>
         <div className="space-y-4">
           {stores.map(store => {
             const isExpanded = expandedStore === store.username;
             const storeOrders = orders.filter(o => o.branchUsername === store.username || o.branchName === store.branchName);
+            const totalStoreAmt = storeOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            
             // 計算該單一門店的廠商統計資料
             const storeVendorStats = vendors.map(v => {
-              const vOrders = storeOrders.filter(o => o.id.includes(`-${v.id}-`));
-              return { ...v, orderCount: vOrders.length, totalAmount: vOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0) };
+              const vOrders = storeOrders.filter(o => (o.id.split('-')[1] || '其他分類') === v.name);
+              const vendorHasUnpriced = vOrders.some(o => o.items?.some(it => !it.price || parseFloat(it.price) === 0));
+              return { ...v, orderCount: vOrders.length, totalAmount: vOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0), hasUnpriced: vendorHasUnpriced };
             }).filter(v => v.orderCount > 0);
+
+            // 判斷該門市是否有未輸入單價的單據 (統一由已過濾的統計資料來判斷，避免幽靈單據)
+            const storeHasUnpriced = storeVendorStats.some(v => v.hasUnpriced);
 
             return (
                <div key={store.username} className={`bg-[#FFFFFF] rounded-[2rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#3B82F6]/30' : 'hover:border-[#9CA3AF]/50'}`}>
                   <button onClick={() => setExpandedStore(isExpanded ? null : store.username)} className="w-full p-5 sm:p-6 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors">
                      <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl transition-colors ${isExpanded ? 'bg-[#3B82F6] text-white' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl transition-colors shrink-0 ${isExpanded ? 'bg-[#3B82F6] text-white' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
                            {store.branchName.charAt(0)}
                         </div>
-                        <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{store.branchName}</h3>
+                        <div className="flex items-center gap-3 flex-wrap">
+                           <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{store.branchName}</h3>
+                           {storeHasUnpriced && (
+                             <span className="bg-[#FEF2F2] border border-[#FECACA] text-[#EF4444] text-[10px] sm:text-xs px-2 py-1 rounded-lg font-black animate-pulse shadow-sm flex items-center gap-1 shrink-0">
+                               <AlertTriangle size={14} /> 尚有未輸入單價
+                             </span>
+                           )}
+                        </div>
                      </div>
                      <div className="flex items-center gap-4">
-                        <span className={`text-sm font-bold px-3 py-1.5 rounded-lg hidden sm:block ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#6B7280]'}`}>
-                           共 {storeVendorStats.length} 個分類有叫貨
-                        </span>
+                        <div className="text-right hidden sm:block mr-2">
+                           <span className="block text-[10px] font-bold text-[#6B7280] uppercase tracking-widest mb-0.5">該店總叫貨金額</span>
+                           <span className={`font-black text-2xl ${isExpanded ? 'text-[#3B82F6]' : 'text-[#F05A42]'}`}>${totalStoreAmt.toLocaleString()}</span>
+                        </div>
                         <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
                            <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                         </div>
@@ -1474,10 +1637,14 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
                                 className="group bg-[#FFFFFF] p-5 rounded-[1.5rem] shadow-sm border border-[#E5E8EB] hover:shadow-md hover:border-[#F05A42]/30 active:scale-[0.98] transition-all text-left flex flex-col h-full"
                               >
                                 <div className="flex items-center gap-3 mb-3">
-                                  <div className="p-3 bg-[#F2F4F7] rounded-xl group-hover:bg-[#FFF2F0] transition-colors text-[#F05A42]">
+                                  <div className="p-3 bg-[#F2F4F7] rounded-xl group-hover:bg-[#FFF2F0] transition-colors text-[#F05A42] relative">
                                     <Layers size={20} />
+                                    {vendor.hasUnpriced && <span className="absolute -top-1 -right-1 w-3 h-3 bg-[#EF4444] rounded-full animate-pulse border-[2px] border-white"></span>}
                                   </div>
                                   <h4 className="font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h4>
+                                  {vendor.hasUnpriced && (
+                                     <span className="ml-auto text-[10px] font-black text-[#EF4444] bg-[#FEF2F2] px-2 py-1 rounded-md border border-[#FECACA] animate-pulse">缺單價</span>
+                                  )}
                                 </div>
                                 <div className="mt-auto space-y-2 pt-3 border-t border-[#F2F4F7]">
                                   <div className="flex justify-between items-center text-sm">
@@ -1504,7 +1671,7 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
       {/* 全域廠商總覽 */}
       <div>
          <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2 border-t border-[#E5E8EB] pt-8">
-           <Layers className="text-[#F05A42]" /> 全域各廠商總覽 (包含所有分店)
+           <Layers className="text-[#F05A42]" /> 分類總金額
          </h3>
          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
            {globalVendorStats.map(vendor => (
@@ -1514,10 +1681,14 @@ function AdminVendorOverview({ orders, vendors, systemOptions, users, db, appId,
                className="group bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] active:scale-[0.98] transition-all duration-300 text-left flex flex-col h-full relative"
              >
                <div className="flex items-center gap-4 mb-4">
-                 <div className="p-4 bg-[#F2F4F7] rounded-2xl group-hover:bg-[#FFF2F0] transition-colors shadow-inner text-[#F05A42]">
+                 <div className="p-4 bg-[#F2F4F7] rounded-2xl group-hover:bg-[#FFF2F0] transition-colors shadow-inner text-[#F05A42] relative">
                    <Layers size={28} />
+                   {vendor.hasUnpriced && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#EF4444] rounded-full animate-pulse border-[2px] border-white shadow-sm"></span>}
                  </div>
-                 <h3 className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
+                 <div>
+                   <h3 className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">{vendor.name}</h3>
+                   {vendor.hasUnpriced && <span className="text-[10px] font-bold text-[#EF4444] bg-[#FEF2F2] px-2 py-0.5 rounded-md mt-1 inline-flex items-center gap-1 animate-pulse border border-[#FECACA]"><AlertTriangle size={12}/> 含有未定價單據</span>}
+                 </div>
                </div>
                
                <div className="mt-auto space-y-3 pt-4 border-t border-[#F2F4F7]">
@@ -1631,89 +1802,191 @@ function AdminExpiryOverview({ expiryRecords, users }) {
 }
 
 // ==========================================
-// 總部 Tab 3：各門店總叫貨金額 
+// 總部 Tab 3：商品價格比較 (原：各門店總叫貨金額)
 // ==========================================
-function AdminDashboard({ users, orders, systemOptions, db, appId, showAlert, showConfirm }) {
-  const [adminView, setAdminView] = useState('overview'); 
-  const [activeStore, setActiveStore] = useState(null);
-  
+function AdminProductComparison({ orders, users }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedVendor, setExpandedVendor] = useState(null);
+
   const stores = users.filter(u => u.role !== 'admin');
-  
-  if (adminView === 'store_orders') return <AdminStoreOrders store={activeStore} orders={orders} onBack={() => setAdminView('overview')} systemOptions={systemOptions} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />;
-  if (adminView === 'store_passwords') return <AdminStorePasswords users={users} onBack={() => setAdminView('overview')} />;
+
+  const comparisonData = useMemo(() => {
+    const map = {};
+    const storesSet = new Set(stores.map(s => s.branchName));
+
+    // 確保由新到舊排序，這樣我們抓到的第一筆有效價格就是最新的
+    const sortedOrders = [...orders].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    sortedOrders.forEach(order => {
+      const vendor = order.id.split('-')[1] || '其他廠商';
+      const storeName = order.branchName || '未知門店';
+      storesSet.add(storeName);
+
+      if (!map[vendor]) map[vendor] = {};
+
+      (order.items || []).forEach(item => {
+        const pName = item.name;
+        const price = parseFloat(item.price);
+        // 跳過沒有名稱或單價異常的資料
+        if (!pName || isNaN(price) || price === 0) return;
+
+        if (!map[vendor][pName]) map[vendor][pName] = {};
+
+        // 如果該門市該商品還沒有價格紀錄 (因為已按時間排序，第一筆就是最新)，就存起來
+        if (!map[vendor][pName][storeName]) {
+          map[vendor][pName][storeName] = {
+            price: price,
+            unit: item.unit || '件',
+            date: order.date
+          };
+        }
+      });
+    });
+
+    // 將資料轉為陣列方便渲染，並計算每個產品的最高與最低價
+    let result = Object.keys(map).map(vendor => {
+      const products = Object.keys(map[vendor]).map(pName => {
+        const storePrices = map[vendor][pName];
+        const prices = Object.values(storePrices).map(s => s.price);
+        
+        // 只有超過一家門市有價格時，才計算最高最低價以供比較
+        const minPrice = prices.length > 1 ? Math.min(...prices) : null;
+        const maxPrice = prices.length > 1 ? Math.max(...prices) : null;
+        
+        return {
+          productName: pName,
+          storePrices,
+          minPrice,
+          maxPrice
+        };
+      }).filter(p => Object.keys(p.storePrices).length > 0);
+      
+      return {
+        vendor,
+        products: products.sort((a, b) => a.productName.localeCompare(b.productName))
+      };
+    }).filter(v => v.products.length > 0);
+
+    // 處理搜尋過濾
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.map(v => ({
+        vendor: v.vendor,
+        products: v.products.filter(p => p.productName.toLowerCase().includes(term))
+      })).filter(v => v.products.length > 0);
+    }
+
+    return { 
+      vendors: result.sort((a,b) => a.vendor.localeCompare(b.vendor)), 
+      allStores: Array.from(storesSet).sort() 
+    };
+  }, [orders, stores, searchTerm]);
+
+  const toggleVendor = (vendorName) => {
+    setExpandedVendor(prev => prev === vendorName ? null : vendorName);
+  };
 
   return (
     <div className="animate-in fade-in duration-500">
       <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
         <div>
-          <h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">各門店總叫貨金額</h2>
-          <p className="text-[#6B7280] font-bold">點選門市以檢視其『各廠商分類總額』，再點選即可看『進貨單明細』。</p>
+          <h2 className="text-3xl font-extrabold text-[#1A1D21] mb-2 tracking-tight">商品價格比較</h2>
+          <p className="text-[#6B7280] font-bold">比較各門市在同一分類下的商品最新進價差異，找出成本落差。</p>
         </div>
-        
-        <a 
-          href="https://ypx-erp-5-0.vercel.app/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full sm:w-auto bg-[#2C3137] hover:bg-[#1A1D21] text-white px-6 py-3.5 rounded-2xl font-black shadow-sm transition-all active:scale-95"
-        >
-          <ShoppingCart size={20} />
-          進入點貨 ERP 前台
-        </a>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-        <div className="bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent flex flex-col justify-center relative overflow-hidden group">
-          <div className="flex items-center gap-5"><div className="p-4 bg-[#F2F4F7] text-[#2C3137] rounded-2xl"><Store size={28} /></div><div><div className="text-[#6B7280] text-xs font-bold uppercase tracking-widest mb-1">連線門市數</div><div className="text-3xl font-black text-[#1A1D21]">{stores.length} 間</div></div></div>
-        </div>
-        <div 
-          onClick={() => setAdminView('store_passwords')}
-          className="bg-[#FFFFFF] p-7 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent flex flex-col justify-center relative overflow-hidden group cursor-pointer hover:shadow-[0_8px_30px_rgba(240,90,66,0.15)] transition-all active:scale-[0.98]"
-        >
-          <div className="flex items-center gap-5">
-            <div className="p-4 bg-[#F2F4F7] text-[#2C3137] rounded-2xl group-hover:bg-[#F05A42] group-hover:text-white transition-colors"><ShieldUser size={28} /></div>
-            <div>
-              <div className="text-[#6B7280] text-xs font-bold uppercase tracking-widest mb-1">門店帳密管理</div>
-              <div className="text-xl font-black text-[#1A1D21] group-hover:text-[#F05A42] transition-colors">查詢門店密碼</div>
-            </div>
+      {/* 搜尋列 */}
+      <div className="relative mb-8">
+         <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+            <Search className="text-[#9CA3AF]" size={24} />
+         </div>
+         <input 
+            type="text" 
+            placeholder="搜尋特定商品名稱 (例如：蛤仔、高麗菜)..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-14 pr-12 py-4 bg-[#FFFFFF] border-[2px] border-transparent rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus:border-[#3B82F6] focus:ring-4 focus:ring-[#3B82F6]/20 outline-none font-black text-[#1A1D21] text-lg transition-all"
+         />
+         {searchTerm && (
+           <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-[#9CA3AF] hover:text-[#1A1D21] transition-colors">
+              <X size={24} strokeWidth={3} />
+           </button>
+         )}
+      </div>
+
+      <div className="space-y-4">
+        {comparisonData.vendors.length === 0 && (
+          <div className="text-center py-20 text-[#9CA3AF] font-bold border-2 border-dashed border-[#E5E8EB] rounded-[2.5rem] bg-[#FFFFFF]">
+            {searchTerm ? `找不到包含「${searchTerm}」的商品紀錄` : '目前尚無商品定價紀錄可供比較'}
           </div>
-        </div>
-      </div>
+        )}
+        
+        {comparisonData.vendors.map(v => {
+          const isExpanded = expandedVendor === v.vendor;
+          
+          return (
+            <div key={v.vendor} className={`bg-[#FFFFFF] rounded-[2.5rem] shadow-sm border border-[#E5E8EB] overflow-hidden transition-all duration-300 ${isExpanded ? 'shadow-md border-[#3B82F6]/30' : 'hover:border-[#9CA3AF]/50'}`}>
+              <button onClick={() => toggleVendor(v.vendor)} className="w-full p-6 sm:p-7 flex justify-between items-center hover:bg-[#F2F4F7]/50 transition-colors">
+                 <div className="flex items-center gap-5">
+                    <div className={`p-4 rounded-2xl flex items-center justify-center font-black transition-colors shrink-0 ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#2C3137]'}`}>
+                       <Store size={24} />
+                    </div>
+                    <div className="text-left">
+                       <h3 className="text-xl sm:text-2xl font-black text-[#1A1D21]">{v.vendor}</h3>
+                       <span className="text-xs font-bold text-[#6B7280] uppercase tracking-widest block mt-1">共 {v.products.length} 項商品比較</span>
+                    </div>
+                 </div>
+                 <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[#EFF6FF] text-[#3B82F6]' : 'bg-[#F2F4F7] text-[#9CA3AF]'}`}>
+                    <ChevronDown className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} size={24} />
+                 </div>
+              </button>
+              
+              {isExpanded && (
+                 <div className="p-6 sm:p-8 pt-0 border-t border-[#F2F4F7] bg-[#F2F4F7]/20">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
+                       {v.products.map(product => (
+                          <div key={product.productName} className="bg-white rounded-[2rem] p-6 border border-[#E5E8EB] shadow-sm flex flex-col gap-4">
+                             <h4 className="text-xl font-black text-[#1A1D21] border-b-2 border-[#F2F4F7] pb-4 flex items-center gap-2">
+                                <Tag className="text-[#3B82F6]" size={20} /> {product.productName}
+                             </h4>
+                             <div className="flex flex-nowrap gap-4 overflow-x-auto hide-scrollbar pb-2">
+                               {comparisonData.allStores.map(storeName => {
+                                  const sp = product.storePrices[storeName];
+                                  if (!sp) {
+                                     return (
+                                        <div key={storeName} className="shrink-0 w-32 p-4 rounded-2xl border-2 border-dashed border-[#E5E8EB] bg-[#F8FAFC] flex flex-col items-center justify-center opacity-60">
+                                           <span className="text-xs font-bold text-[#9CA3AF] mb-1">{storeName}</span>
+                                           <span className="text-xs font-bold text-[#D1D5DB]">尚無定價紀錄</span>
+                                        </div>
+                                     );
+                                  }
 
-      <div className="bg-[#FFFFFF] rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent overflow-hidden">
-        <div className="px-7 py-6 border-b-2 border-[#F2F4F7] bg-[#FFFFFF] flex items-center justify-between">
-          <div className="flex items-center gap-4"><div className="p-2.5 bg-[#F2F4F7] rounded-xl"><Building2 className="text-[#2C3137]" size={20} /></div><h3 className="font-black text-[#1A1D21] text-lg">各門市最新單據與叫貨總額</h3></div>
-        </div>
-        <div className="divide-y-2 divide-[#F2F4F7]">
-          {stores.map(store => {
-            const storeOrders = orders.filter(o => o.branchUsername === store.username || o.branchName === store.branchName);
-            const pendingCount = storeOrders.filter(o => o.status !== 'received').length;
-            const totalAmt = storeOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-            
-            return (
-              <div 
-                key={store.username} 
-                onClick={() => { setActiveStore(store); setAdminView('store_orders'); }} 
-                className="p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-5 hover:bg-[#F2F4F7]/60 transition-colors group cursor-pointer"
-              >
-                <div className="flex items-center gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-[#F2F4F7] flex items-center justify-center text-[#6B7280] font-black text-2xl border border-transparent group-hover:bg-white transition-colors">{store.branchName.charAt(0)}</div>
-                  <div>
-                    <h4 className="font-black text-[#1A1D21] text-2xl group-hover:text-[#F05A42] transition-colors">{store.branchName}</h4>
-                    {pendingCount > 0 && <span className="text-xs font-bold bg-[#FEF2F2] text-[#EF4444] px-2 py-1 rounded-md mt-1 inline-block animate-pulse">{pendingCount} 筆待核對</span>}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between lg:justify-end gap-6 w-full lg:w-auto mt-2 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-none border-[#E5E8EB]">
-                  <div className="text-left lg:text-right">
-                    <span className="block text-xs font-bold text-[#6B7280] uppercase tracking-widest mb-1">該店總叫貨金額</span>
-                    <span className="font-black text-[#F05A42] text-2xl">${totalAmt.toLocaleString()}</span>
-                  </div>
-                  <ChevronRight className="text-[#9CA3AF] group-hover:translate-x-1 transition-transform ml-2" size={24} />
-                </div>
-              </div>
-            );
-          })}
-          {stores.length === 0 && <div className="p-10 text-center text-[#9CA3AF] font-bold">尚無門店資料</div>}
-        </div>
+                                  const isMin = product.minPrice !== null && sp.price === product.minPrice;
+                                  const isMax = product.maxPrice !== null && sp.price === product.maxPrice;
+                                  
+                                  return (
+                                     <div key={storeName} className={`shrink-0 w-[136px] p-4 rounded-2xl border-[2px] flex flex-col relative ${isMin ? 'border-[#A7F3D0] bg-[#ECFDF5]' : isMax ? 'border-[#FECACA] bg-[#FEF2F2]' : 'border-[#E5E8EB] bg-[#FFFFFF] hover:border-[#D1D5DB]'}`}>
+                                        {isMin && <div className="absolute -top-3 right-2 bg-[#10B981] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm shadow-[#10B981]/30 border-2 border-white flex items-center gap-0.5"><TrendingDown size={10}/> 最低價</div>}
+                                        {isMax && <div className="absolute -top-3 right-2 bg-[#EF4444] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm shadow-[#EF4444]/30 border-2 border-white flex items-center gap-0.5"><TrendingUp size={10}/> 最高價</div>}
+                                        
+                                        <span className="text-xs font-bold text-[#6B7280] mb-2">{storeName}</span>
+                                        <div className="flex items-baseline gap-1 mt-auto">
+                                           <span className={`text-2xl font-black ${isMin ? 'text-[#059669]' : isMax ? 'text-[#DC2626]' : 'text-[#1A1D21]'}`}>${sp.price}</span>
+                                           <span className="text-xs text-[#9CA3AF] font-bold">/ {sp.unit}</span>
+                                        </div>
+                                        <span className="text-[10px] text-[#9CA3AF] mt-2 font-bold tracking-widest block bg-white/50 px-2 py-0.5 rounded inline-block">{sp.date}</span>
+                                     </div>
+                                  );
+                               })}
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1962,7 +2235,7 @@ function AdminStorePasswords({ users, onBack }) {
   return (
     <div className="animate-in slide-in-from-right-8 duration-500">
       <button onClick={onBack} className="flex items-center gap-2 text-[#6B7280] font-bold hover:text-[#1A1D21] transition-colors mb-6">
-        <ChevronLeft size={20} />返回各店總覽
+        <ChevronLeft size={20} />返回系統設定
       </button>
 
       <div className="bg-[#FFFFFF] rounded-[2.5rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-transparent mb-8 flex items-center gap-5">
@@ -2101,6 +2374,9 @@ function AdminStoreOrders({ store, orders, onBack, systemOptions, db, appId, sho
             const hasAbnormal = vOrders.some(o => o.status === 'abnormal' || (o.abnormalCategories && Object.keys(o.abnormalCategories).length > 0));
             const pendingCount = vOrders.filter(o => o.status !== 'received').length;
             const totalAmt = vOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            
+            // 檢查該廠商內是否有未輸入單價的單據
+            const hasUnpriced = vOrders.some(o => o.items?.some(it => !it.price || parseFloat(it.price) === 0));
 
             if (isSorting) {
                return (
@@ -2128,6 +2404,11 @@ function AdminStoreOrders({ store, orders, onBack, systemOptions, db, appId, sho
                   </div>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-8 w-full sm:w-auto mt-2 sm:mt-0 pt-4 sm:pt-0 border-t border-[#F2F4F7] sm:border-0">
+                  {hasUnpriced && (
+                    <span className="bg-[#FEF2F2] text-[#EF4444] text-xs font-black px-4 py-2 rounded-xl border border-[#FECACA] shadow-sm animate-pulse whitespace-nowrap hidden sm:block">
+                      尚有未定價單據
+                    </span>
+                  )}
                   {pendingCount > 0 && (
                     <span className="bg-[#FEF2F2] text-[#EF4444] text-xs font-black px-4 py-2 rounded-xl border border-[#FECACA] shadow-sm animate-pulse whitespace-nowrap">
                       {pendingCount} 筆待核對
@@ -2159,26 +2440,19 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
   // 檢查是否曾經有異常紀錄 (不管現在是否已修復)
   const hasAbnormalHistory = order.abnormalReason || isCurrentlyAbnormal || (order.abnormalCategories && Object.keys(order.abnormalCategories).length > 0);
 
-  const handleUpdateItem = async (itemIdx, field, newValue) => {
+  const handleUpdateRow = async (itemIdx, newRowData) => {
     setUpdating(true);
     try {
       const updatedItems = [...order.items];
-
-      if (field === 'price') {
-        const numPrice = parseFloat(newValue) || 0;
-        if (updatedItems[itemIdx].price === numPrice) { setUpdating(false); return; }
-        updatedItems[itemIdx] = { ...updatedItems[itemIdx], price: numPrice };
-      } else if (field === 'unit') {
-        if (updatedItems[itemIdx].unit === newValue) { setUpdating(false); return; }
-        updatedItems[itemIdx] = { ...updatedItems[itemIdx], unit: newValue };
-      } else if (field === 'name') {
-        if (updatedItems[itemIdx].name === newValue) { setUpdating(false); return; }
-        updatedItems[itemIdx] = { ...updatedItems[itemIdx], name: newValue };
-      } else if (field === 'quantity') {
-        const qty = parseFloat(newValue) || 0;
-        if ((updatedItems[itemIdx].orderQty || updatedItems[itemIdx].quantity) === qty) { setUpdating(false); return; }
-        updatedItems[itemIdx] = { ...updatedItems[itemIdx], quantity: qty, orderQty: qty };
-      }
+      
+      updatedItems[itemIdx] = {
+         ...updatedItems[itemIdx],
+         name: newRowData.name,
+         quantity: parseFloat(newRowData.quantity) || 0,
+         orderQty: parseFloat(newRowData.quantity) || 0,
+         unit: newRowData.unit,
+         price: parseFloat(newRowData.price) || 0
+      };
 
       const newTotal = updatedItems.reduce((sum, it) => sum + ((it.orderQty || it.quantity || 0) * (it.price || 0)), 0);
 
@@ -2186,9 +2460,10 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
         items: updatedItems,
         totalAmount: newTotal
       });
+      showAlert('商品資料已儲存！');
     } catch (error) {
       console.error('更新失敗:', error);
-      showAlert('更新失敗，請確認網路連線。');
+      showAlert('儲存失敗，請確認網路連線。');
     } finally {
       setUpdating(false);
     }
@@ -2310,70 +2585,15 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
           </thead>
           <tbody className="divide-y divide-[#F2F4F7]">
             {order.items.map((item, idx) => {
-              const qty = item.orderQty || item.quantity || 0;
-              const price = item.price || 0;
-              const itemTotal = qty * price;
-              const currentUnit = item.unit || '件';
-
               return (
-                <tr key={idx} className="hover:bg-[#F2F4F7]/60 transition-colors group">
-                   <td className="py-5 px-3 font-mono text-[#6B7280] text-sm tracking-wider">{item.id || `P${String(idx+1).padStart(3, '0')}`}</td>
-                   <td className="py-5 px-3">
-                     <input
-                        type="text"
-                        defaultValue={item.name}
-                        onBlur={(e) => handleUpdateItem(idx, 'name', e.target.value)}
-                        className="w-full px-3 py-2.5 bg-white border border-[#E5E8EB] rounded-xl focus:ring-2 focus:ring-[#F05A42] outline-none font-bold text-[#1A1D21] text-[17px] shadow-inner transition-all hover:border-[#F05A42]"
-                        placeholder="請輸入名稱"
-                     />
-                   </td>
-                   <td className="py-5 px-3">
-                     <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        defaultValue={qty}
-                        onBlur={(e) => handleUpdateItem(idx, 'quantity', e.target.value)}
-                        className="w-full px-2 py-2.5 bg-white border border-[#E5E8EB] rounded-xl focus:ring-2 focus:ring-[#F05A42] outline-none text-center font-black text-[#F05A42] text-[17px] shadow-inner transition-all hover:border-[#F05A42]"
-                     />
-                   </td>
-                   <td className="py-5 px-3 text-left">
-                      <select
-                         value={currentUnit}
-                         onChange={(e) => handleUpdateItem(idx, 'unit', e.target.value)}
-                         className="w-full bg-white border border-[#E5E8EB] rounded-lg px-2 py-2 focus:ring-2 focus:ring-[#F05A42] outline-none font-bold text-[#1A1D21] text-sm shadow-inner cursor-pointer"
-                      >
-                         <option value={currentUnit}>{currentUnit}</option>
-                         {(systemOptions?.units || []).map((u, i) => {
-                            const uName = typeof u === 'string' ? u : u.name;
-                            if (uName !== currentUnit) {
-                               return <option key={`opt-${i}`} value={uName}>{uName}</option>;
-                            }
-                            return null;
-                         })}
-                      </select>
-                   </td>
-                   <td className="py-5 px-3 text-right">
-                      <div className="flex items-center justify-end gap-1 relative">
-                        <span className="text-[#6B7280] font-bold absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">$</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          defaultValue={price === 0 ? '' : price}
-                          onBlur={(e) => handleUpdateItem(idx, 'price', e.target.value)}
-                          className="w-full pl-7 pr-3 py-2.5 bg-white border border-[#E5E8EB] rounded-xl focus:ring-2 focus:ring-[#F05A42] outline-none text-right font-black text-[#1A1D21] text-[17px] shadow-inner transition-all hover:border-[#F05A42]"
-                          placeholder="單價"
-                        />
-                      </div>
-                   </td>
-                   <td className="py-5 px-3 text-right font-black text-[#1A1D21] text-xl">${itemTotal.toLocaleString()}</td>
-                   <td className="py-5 px-3 text-center">
-                     <button onClick={() => handleRemoveItem(idx)} className="p-2 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors shadow-sm" title="刪除商品">
-                       <Trash2 size={20} />
-                     </button>
-                   </td>
-                </tr>
+                <OrderItemRow 
+                  key={idx} 
+                  item={item} 
+                  idx={idx} 
+                  systemOptions={systemOptions} 
+                  onSave={handleUpdateRow} 
+                  onRemove={handleRemoveItem} 
+                />
               );
             })}
             <tr className="border-t-[3px] border-dashed border-[#F2F4F7] hover:bg-[#F2F4F7]/30 transition-colors">
