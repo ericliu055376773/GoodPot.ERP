@@ -2443,53 +2443,124 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
     setIsEditing(false);
   };
 
+  const qty = parseFloat(item.orderQty || item.quantity) || 0;
+  const price = parseFloat(item.price) || 0;
+  const totalVal = qty * price;
+
   if (isEditing) {
     return (
-      <tr className="hover:bg-[#F2F4F7]/40 transition-colors group">
-        <td className="py-4 px-3 font-mono text-[#6B7280] text-sm">#{idx + 1}</td>
-        <td className="py-4 px-3">
-          <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]" />
-        </td>
-        <td className="py-4 px-3">
-          <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
-        </td>
-        <td className="py-4 px-3">
-          <select value={editData.unit} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]">
-            {(systemOptions?.units || []).map((u, i) => {
-               const uName = typeof u === 'string' ? u : u.name;
-               return <option key={i} value={uName}>{uName}</option>;
-            })}
-          </select>
-        </td>
-        <td className="py-4 px-3">
-          <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-right outline-none focus:ring-2 focus:ring-[#F05A42]" />
-        </td>
-        <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
-          ${((parseFloat(editData.quantity || editData.orderQty) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
-        </td>
-        <td className="py-4 px-3 text-center">
-          <button onClick={handleSave} className="text-[#10B981] hover:text-[#059669] font-black mr-3 active:scale-95 transition-all">儲存</button>
-          <button onClick={() => setIsEditing(false)} className="text-[#9CA3AF] hover:text-[#1A1D21] font-bold active:scale-95 transition-all">取消</button>
-        </td>
-      </tr>
+      <>
+        {/* Desktop editing row */}
+        <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
+          <td className="py-4 px-3 font-mono text-[#6B7280] text-sm">#{idx + 1}</td>
+          <td className="py-4 px-3">
+            <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]" />
+          </td>
+          <td className="py-4 px-3">
+            <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
+          </td>
+          <td className="py-4 px-3">
+            <select value={editData.unit} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]">
+              {(systemOptions?.units || []).map((u, i) => {
+                 const uName = typeof u === 'string' ? u : u.name;
+                 return <option key={i} value={uName}>{uName}</option>;
+              })}
+            </select>
+          </td>
+          <td className="py-4 px-3">
+            <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-right outline-none focus:ring-2 focus:ring-[#F05A42]" />
+          </td>
+          <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
+            ${((parseFloat(editData.quantity || editData.orderQty) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
+          </td>
+          <td className="py-4 px-3 text-center">
+            <button onClick={handleSave} className="text-[#10B981] hover:text-[#059669] font-black mr-3 active:scale-95 transition-all">儲存</button>
+            <button onClick={() => setIsEditing(false)} className="text-[#9CA3AF] hover:text-[#1A1D21] font-bold active:scale-95 transition-all">取消</button>
+          </td>
+        </tr>
+        {/* Mobile editing card */}
+        <tr className="sm:hidden">
+          <td colSpan="7" className="p-0">
+            <div className="bg-[#FFFBF5] border border-[#F05A42]/20 rounded-2xl p-4 mx-1 my-2 space-y-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-mono text-[#9CA3AF] text-xs font-bold">#{idx + 1}</span>
+                <div className="flex gap-2">
+                  <button onClick={handleSave} className="px-4 py-1.5 bg-[#10B981] text-white rounded-xl font-black text-sm active:scale-95 transition-all">儲存</button>
+                  <button onClick={() => setIsEditing(false)} className="px-4 py-1.5 bg-[#E5E8EB] text-[#6B7280] rounded-xl font-bold text-sm active:scale-95 transition-all">取消</button>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">商品名稱</label>
+                <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">數量</label>
+                  <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 text-center outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">單位</label>
+                  <select value={editData.unit} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-2 py-2.5 outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold">
+                    {(systemOptions?.units || []).map((u, i) => {
+                       const uName = typeof u === 'string' ? u : u.name;
+                       return <option key={i} value={uName}>{uName}</option>;
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">單價</label>
+                  <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 text-right outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </>
     );
   }
 
   return (
-    <tr className="hover:bg-[#F2F4F7]/40 transition-colors group">
-      <td className="py-4 px-3 font-mono text-[#9CA3AF] text-sm">#{idx + 1}</td>
-      <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.name}</td>
-      <td className="py-4 px-3 text-center font-black text-[#1A1D21] text-lg">{item.orderQty || item.quantity}</td>
-      <td className="py-4 px-3 text-left font-bold text-[#6B7280]">{item.unit}</td>
-      <td className="py-4 px-3 text-right font-black text-[#F05A42] text-lg">${item.price || 0}</td>
-      <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
-        ${((parseFloat(item.orderQty || item.quantity) || 0) * (parseFloat(item.price) || 0)).toLocaleString()}
-      </td>
-      <td className="py-4 px-3 text-center flex justify-center gap-2">
-        <button onClick={() => setIsEditing(true)} className="p-2 text-[#9CA3AF] hover:text-[#3B82F6] hover:bg-[#EFF6FF] rounded-xl transition-colors"><Edit2 size={18} /></button>
-        <button onClick={() => onRemove(idx)} className="p-2 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors"><Trash2 size={18} /></button>
-      </td>
-    </tr>
+    <>
+      {/* Desktop row */}
+      <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
+        <td className="py-4 px-3 font-mono text-[#9CA3AF] text-sm">#{idx + 1}</td>
+        <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.name}</td>
+        <td className="py-4 px-3 text-center font-black text-[#1A1D21] text-lg">{qty}</td>
+        <td className="py-4 px-3 text-left font-bold text-[#6B7280]">{item.unit}</td>
+        <td className="py-4 px-3 text-right font-black text-[#F05A42] text-lg">${price}</td>
+        <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">${totalVal.toLocaleString()}</td>
+        <td className="py-4 px-3 text-center flex justify-center gap-2">
+          <button onClick={() => setIsEditing(true)} className="p-2 text-[#9CA3AF] hover:text-[#3B82F6] hover:bg-[#EFF6FF] rounded-xl transition-colors"><Edit2 size={18} /></button>
+          <button onClick={() => onRemove(idx)} className="p-2 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors"><Trash2 size={18} /></button>
+        </td>
+      </tr>
+      {/* Mobile card */}
+      <tr className="sm:hidden">
+        <td colSpan="7" className="p-0">
+          <div className="border-b border-[#F2F4F7] px-4 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="font-mono text-[#9CA3AF] text-xs font-bold shrink-0">#{idx + 1}</span>
+                  <span className="font-bold text-[#1A1D21] text-[15px] truncate">{item.name || '（未填寫）'}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-[#6B7280]"><span className="font-black text-[#1A1D21]">{qty}</span> {item.unit}</span>
+                  <span className="text-[#E5E8EB]">|</span>
+                  <span className="text-[#6B7280]">單價 <span className="font-black text-[#F05A42]">${price}</span></span>
+                  <span className="text-[#E5E8EB]">|</span>
+                  <span className="font-black text-[#111418]">${totalVal.toLocaleString()}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => setIsEditing(true)} className="p-2 text-[#9CA3AF] hover:text-[#3B82F6] hover:bg-[#EFF6FF] rounded-xl transition-colors active:scale-90"><Edit2 size={18} /></button>
+                <button onClick={() => onRemove(idx)} className="p-2 text-[#9CA3AF] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors active:scale-90"><Trash2 size={18} /></button>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </>
   );
 }
 
@@ -2632,9 +2703,9 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
          </div>
       )}
 
-      <div className="p-6 sm:p-8 overflow-x-auto">
-        <table className="w-full text-left min-w-[700px]">
-          <thead>
+      <div className="p-2 sm:p-8 overflow-x-auto">
+        <table className="w-full text-left sm:min-w-[700px]">
+          <thead className="hidden sm:table-header-group">
              <tr className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-widest border-b-2 border-[#F2F4F7]">
                 <th className="py-4 px-3 w-20">產品編號</th>
                 <th className="py-4 px-3"><Layers className="inline w-3.5 h-3.5 mr-1 -mt-0.5"/> 商品名稱</th>
