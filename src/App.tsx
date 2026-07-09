@@ -94,9 +94,31 @@ export default function App() {
   const [usersDb, setUsersDb] = useState([]);
   const [ordersDb, setOrdersDb] = useState([]);
   const [inventoryDb, setInventoryDb] = useState({});
+  const [productsDb, setProductsDb] = useState([]);
   const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts }); 
   const [compensationsDb, setCompensationsDb] = useState([]); 
   const [expiryRecords, setExpiryRecords] = useState([]);
+
+  // 商品代號對照表 (從 YPX 商品庫同步)
+  const productCodeMap = useMemo(() => {
+    const map = {};
+    productsDb.forEach(p => {
+      if (p.code) { map[p.name] = p.code; map[p.id] = p.code; }
+    });
+    return map;
+  }, [productsDb]);
+
+  // 將代號注入所有訂單的 items 中（相容舊訂單）
+  const enrichedOrders = useMemo(() => {
+    if (Object.keys(productCodeMap).length === 0) return ordersDb;
+    return ordersDb.map(order => ({
+      ...order,
+      items: (order.items || []).map(item => ({
+        ...item,
+        code: item.code || productCodeMap[item.name] || productCodeMap[item.id] || ''
+      }))
+    }));
+  }, [ordersDb, productCodeMap]);
   
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('login');
@@ -237,7 +259,12 @@ export default function App() {
       (error) => console.error("Error fetching options:", error)
     );
 
-    return () => { unsubUsers(); unsubOrders(); unsubInv(); unsubCompensations(); unsubOptions(); };
+    const unsubProducts = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_products'), 
+      (snap) => setProductsDb(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (error) => console.error("Error fetching products:", error)
+    );
+
+    return () => { unsubUsers(); unsubOrders(); unsubInv(); unsubCompensations(); unsubOptions(); unsubProducts(); };
   }, [fbUser]);
 
   const dynamicVendors = useMemo(() => {
@@ -543,20 +570,20 @@ export default function App() {
         <main className={`flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 lg:p-8 w-full mx-auto pb-40 ${viewMode === 'auto' ? 'max-w-7xl' : ''}`}>
           
           {/* 門市端視圖 */}
-          {currentView === 'store_dashboard' && <StoreDashboard currentUser={currentUser} vendors={dynamicVendors} orders={ordersDb} onSelectVendor={(v) => { setSelectedVendor(v); setCurrentView('store_vendor_detail'); }} />}
-          {currentView === 'store_abnormal' && <StoreAbnormalOverview currentUser={currentUser} orders={ordersDb} onResolveAbnormal={handleResolveAbnormal} />}
+          {currentView === 'store_dashboard' && <StoreDashboard currentUser={currentUser} vendors={dynamicVendors} orders={enrichedOrders} onSelectVendor={(v) => { setSelectedVendor(v); setCurrentView('store_vendor_detail'); }} />}
+          {currentView === 'store_abnormal' && <StoreAbnormalOverview currentUser={currentUser} orders={enrichedOrders} onResolveAbnormal={handleResolveAbnormal} />}
           {currentView === 'store_compensation' && <StoreCompensationOverview currentUser={currentUser} vendors={dynamicVendors} systemOptions={systemOptions} compensations={compensationsDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'store_expiry' && <StoreExpiryTracker currentUser={currentUser} products={trackingProducts} expiryRecords={expiryRecords} setExpiryRecords={setExpiryRecords} />}
-          {currentView === 'store_vendor_detail' && <StoreVendorDetail currentUser={currentUser} vendor={selectedVendor} orders={ordersDb} abnormalReasons={dynamicAbnormalReasons} onVerifySuccess={handleVerifySuccess} onSubmitAbnormal={handleSubmitAbnormalCloud} onResolveAbnormal={handleResolveAbnormal} onBack={() => { setSelectedVendor(null); setCurrentView('store_dashboard'); }} />}
+          {currentView === 'store_vendor_detail' && <StoreVendorDetail currentUser={currentUser} vendor={selectedVendor} orders={enrichedOrders} abnormalReasons={dynamicAbnormalReasons} onVerifySuccess={handleVerifySuccess} onSubmitAbnormal={handleSubmitAbnormalCloud} onResolveAbnormal={handleResolveAbnormal} onBack={() => { setSelectedVendor(null); setCurrentView('store_dashboard'); }} />}
 
           {/* 總部端視圖切換 */}
-          {currentView === 'admin_vendors' && <AdminVendorOverview orders={ordersDb} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
+          {currentView === 'admin_vendors' && <AdminVendorOverview orders={enrichedOrders} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
-          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={ordersDb} users={usersDb} />}
-          {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
-          {currentView === 'admin_price_trends' && <AdminPriceTrends orders={ordersDb} users={usersDb} />}
+          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={enrichedOrders} users={usersDb} />}
+          {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={enrichedOrders} />}
+          {currentView === 'admin_price_trends' && <AdminPriceTrends orders={enrichedOrders} users={usersDb} />}
           {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
-          {currentView === 'admin_abnormal' && <AdminAbnormalOverview orders={ordersDb} users={usersDb} />}
+          {currentView === 'admin_abnormal' && <AdminAbnormalOverview orders={enrichedOrders} users={usersDb} />}
           {currentView === 'admin_compensation' && <AdminCompensationOverview compensations={compensationsDb} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
 
         </main>
