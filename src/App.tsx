@@ -2511,7 +2511,7 @@ function AdminStoreOrders({ store, orders, onBack, systemOptions, db, appId, sho
 
 function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ ...item });
+  const [editData, setEditData] = useState({ ...item, quantity: item.orderQty || item.quantity || 0 });
 
   const handleSave = () => {
     onSave(idx, editData);
@@ -2527,12 +2527,12 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
       <>
         {/* Desktop editing row */}
         <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
-          <td className="py-4 px-3 font-mono text-[#6B7280] text-sm">#{idx + 1}</td>
+          <td className="py-4 px-3 font-mono text-sm">{item.code ? <span className="font-black text-[#10B981] text-[11px]">{item.code}</span> : <span className="text-[#6B7280]">#{idx + 1}</span>}</td>
           <td className="py-4 px-3">
             <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]" />
           </td>
           <td className="py-4 px-3">
-            <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
+            <input type="number" value={editData.quantity} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
           </td>
           <td className="py-4 px-3">
             <select value={editData.unit} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]">
@@ -2546,7 +2546,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
             <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-right outline-none focus:ring-2 focus:ring-[#F05A42]" />
           </td>
           <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
-            ${((parseFloat(editData.quantity || editData.orderQty) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
+            ${((parseFloat(editData.quantity) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
           </td>
           <td className="py-4 px-3 text-center">
             <button onClick={handleSave} className="text-[#10B981] hover:text-[#059669] font-black mr-3 active:scale-95 transition-all">儲存</button>
@@ -2571,7 +2571,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">數量</label>
-                  <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 text-center outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
+                  <input type="number" value={editData.quantity} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 text-center outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">單位</label>
@@ -2598,8 +2598,8 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
     <>
       {/* Desktop row */}
       <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
-        <td className="py-4 px-3 font-mono text-[#9CA3AF] text-sm">#{idx + 1}</td>
-        <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.code && <span className="text-[10px] font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded-md tracking-widest mr-2">{item.code}</span>}{item.name}</td>
+        <td className="py-4 px-3 font-mono text-sm">{item.code ? <span className="font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-2 py-1 rounded-lg tracking-widest text-[11px] not-italic">{item.code}</span> : <span className="text-[#9CA3AF]">#{idx + 1}</span>}</td>
+        <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.name}</td>
         <td className="py-4 px-3 text-center font-black text-[#1A1D21] text-lg">{qty}</td>
         <td className="py-4 px-3 text-left font-bold text-[#6B7280]">{item.unit}</td>
         <td className="py-4 px-3 text-right font-black text-[#F05A42] text-lg">${price}</td>
@@ -2656,8 +2656,9 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
       updatedItems[itemIdx] = {
          ...updatedItems[itemIdx],
          name: newRowData.name,
-         quantity: parseFloat(newRowData.quantity) || 0,
-         orderQty: parseFloat(newRowData.quantity) || 0,
+         code: newRowData.code || updatedItems[itemIdx].code || '',
+         quantity: parseFloat(newRowData.quantity || newRowData.orderQty) || updatedItems[itemIdx].orderQty || 0,
+         orderQty: parseFloat(newRowData.quantity || newRowData.orderQty) || updatedItems[itemIdx].orderQty || 0,
          unit: newRowData.unit,
          price: parseFloat(newRowData.price) || 0
       };
