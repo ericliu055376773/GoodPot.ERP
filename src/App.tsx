@@ -1445,7 +1445,7 @@ function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVer
               <div className="space-y-3">
                 {order.items.map((item, idx) => (
                   <div key={idx} className="flex items-center text-sm pb-4 hover:bg-[#F2F4F7]/60 p-2.5 rounded-2xl transition-colors">
-                    <div className="flex-1 font-bold text-[#1A1D21] pl-2 text-base">{item.name}</div>
+                    <div className="flex-1 font-bold text-[#1A1D21] pl-2 text-base">{item.code && <span className="text-[10px] font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded-md tracking-widest mr-2">{item.code}</span>}{item.name}</div>
                     <div className="w-24 text-right font-black text-[#111418] text-lg pr-2">{item.orderQty || item.quantity} <span className="text-sm font-bold text-[#9CA3AF]">件</span></div>
                   </div>
                 ))}
@@ -2524,7 +2524,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
       {/* Desktop row */}
       <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
         <td className="py-4 px-3 font-mono text-[#9CA3AF] text-sm">#{idx + 1}</td>
-        <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.name}</td>
+        <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.code && <span className="text-[10px] font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded-md tracking-widest mr-2">{item.code}</span>}{item.name}</td>
         <td className="py-4 px-3 text-center font-black text-[#1A1D21] text-lg">{qty}</td>
         <td className="py-4 px-3 text-left font-bold text-[#6B7280]">{item.unit}</td>
         <td className="py-4 px-3 text-right font-black text-[#F05A42] text-lg">${price}</td>
@@ -2542,7 +2542,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="font-mono text-[#9CA3AF] text-xs font-bold shrink-0">#{idx + 1}</span>
-                  <span className="font-bold text-[#1A1D21] text-[15px] truncate">{item.name || '（未填寫）'}</span>
+                  <span className="font-bold text-[#1A1D21] text-[15px] truncate">{item.code && <span className="text-[10px] font-black text-[#10B981] mr-1">[{item.code}]</span>}{item.name || '（未填寫）'}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="text-[#6B7280]"><span className="font-black text-[#1A1D21]">{qty}</span> {item.unit}</span>
