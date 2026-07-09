@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Layers,
   X,
+  Eye,
   Menu, 
   ArrowUpDown,
   Smartphone,
@@ -974,6 +975,7 @@ function AdminSettings({ systemOptions, users, db, appId, showAlert, showConfirm
 // ==========================================
 function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
   const [expandedVendor, setExpandedVendor] = useState(null);
+  const [selectedReceivedOrder, setSelectedReceivedOrder] = useState(null);
 
   const storeOrders = useMemo(() => orders.filter(o => o.branchUsername === currentUser.username || o.branchName === currentUser.name), [currentUser, orders]);
 
@@ -1076,7 +1078,7 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
                            const unitText = uniqueUnits.length === 1 ? uniqueUnits[0] : '件(等)';
 
                            return (
-                             <div key={order.id} className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 opacity-90 hover:opacity-100 transition-opacity shadow-sm">
+                             <button key={order.id} onClick={() => setSelectedReceivedOrder(order)} className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 opacity-90 hover:opacity-100 hover:border-[#10B981]/40 hover:shadow-md transition-all shadow-sm text-left cursor-pointer active:scale-[0.98]">
                                 <div className="flex justify-between items-start">
                                    <div>
                                       <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] px-2 py-1 rounded-md mb-1.5 inline-block tracking-widest">{order.date}</span>
@@ -1090,7 +1092,10 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
                                    <span className="text-xs font-bold text-[#9CA3AF]">進貨總量</span>
                                    <span className="font-black text-[#1A1D21] text-lg">{totalQty} <span className="text-sm font-bold text-[#6B7280]">{unitText}</span></span>
                                 </div>
-                             </div>
+                                <div className="flex items-center justify-center text-[10px] font-bold text-[#9CA3AF] hover:text-[#10B981] transition-colors gap-1 pt-1">
+                                  <Eye size={12} /> 點擊查看明細
+                                </div>
+                             </button>
                            );
                          })}
                        </div>
@@ -1102,12 +1107,82 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
           </div>
         </div>
       )}
+
+      {/* 已入庫訂單明細 Modal */}
+      {selectedReceivedOrder && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedReceivedOrder(null)}>
+          <div className="bg-white rounded-[2rem] w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-[#1A1D21] text-white p-6 shrink-0">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest block mb-1">{selectedReceivedOrder.date}</span>
+                  <h3 className="text-xl font-black">{selectedReceivedOrder.id}</h3>
+                </div>
+                <button onClick={() => setSelectedReceivedOrder(null)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3 mt-3">
+                <span className="text-xs font-bold text-[#10B981] bg-[#10B981]/20 px-3 py-1 rounded-lg flex items-center gap-1">
+                  <CheckCircle2 size={12} /> 已入庫
+                </span>
+                {selectedReceivedOrder.branchName && (
+                  <span className="text-xs font-bold text-[#9CA3AF]">門市：{selectedReceivedOrder.branchName}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Items List */}
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-3 flex px-2">
+                <span className="flex-1">商品名稱</span>
+                <span className="w-20 text-center">數量</span>
+                <span className="w-20 text-right">單價</span>
+                <span className="w-20 text-right">小計</span>
+              </div>
+              <div className="space-y-2">
+                {(selectedReceivedOrder.items || []).map((item, idx) => {
+                  const qty = parseFloat(item.orderQty || item.quantity) || 0;
+                  const price = parseFloat(item.price) || 0;
+                  const subtotal = qty * price;
+                  return (
+                    <div key={idx} className="flex items-center bg-[#F9FAFB] hover:bg-[#F2F4F7] rounded-xl px-3 py-3 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {item.code && <span className="text-[9px] font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded tracking-widest shrink-0">{item.code}</span>}
+                          <span className="font-bold text-[#1A1D21] text-sm truncate">{item.name}</span>
+                        </div>
+                      </div>
+                      <span className="w-20 text-center font-black text-[#1A1D21] text-sm">{qty} <span className="text-[#9CA3AF] text-xs font-bold">{item.unit || '件'}</span></span>
+                      <span className="w-20 text-right font-bold text-[#F05A42] text-sm">{price > 0 ? `$${price}` : '-'}</span>
+                      <span className="w-20 text-right font-black text-[#1A1D21] text-sm">{subtotal > 0 ? `$${subtotal.toLocaleString()}` : '-'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer Summary */}
+            <div className="border-t border-[#E5E8EB] bg-[#F9FAFB] p-5 shrink-0">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="text-xs font-bold text-[#9CA3AF]">共 {(selectedReceivedOrder.items || []).length} 項商品</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest block mb-0.5">訂單總金額</span>
+                  <span className="font-black text-[#1A1D21] text-2xl">
+                    ${(selectedReceivedOrder.totalAmount || (selectedReceivedOrder.items || []).reduce((sum, it) => sum + (parseFloat(it.orderQty || it.quantity) || 0) * (parseFloat(it.price) || 0), 0)).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ==========================================
-// 前臺：門市異常通報總覽 
 // ==========================================
 function StoreAbnormalOverview({ currentUser, orders, onResolveAbnormal }) {
   const abnormalOrders = orders.filter(o => (o.branchUsername === currentUser.username || o.branchName === currentUser.name) && o.status === 'abnormal').sort((a, b) => (b.abnormalTime || b.timestamp) - (a.abnormalTime || a.timestamp));
