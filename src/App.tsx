@@ -974,6 +974,7 @@ function AdminSettings({ systemOptions, users, db, appId, showAlert, showConfirm
 // ==========================================
 function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
   const [expandedVendor, setExpandedVendor] = useState(null);
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   const storeOrders = useMemo(() => orders.filter(o => o.branchUsername === currentUser.username || o.branchName === currentUser.name), [currentUser, orders]);
 
@@ -1096,20 +1097,52 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
                            const unitText = uniqueUnits.length === 1 ? uniqueUnits[0] : '件(等)';
 
                            return (
-                             <div key={order.id} className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 opacity-90 hover:opacity-100 transition-opacity shadow-sm">
-                                <div className="flex justify-between items-start">
-                                   <div>
-                                      <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] px-2 py-1 rounded-md mb-1.5 inline-block tracking-widest">{order.date}</span>
-                                      <span className="font-black text-[#1A1D21] text-base block">{order.id}</span>
-                                   </div>
-                                   <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-1 rounded-lg flex items-center gap-1 shrink-0">
-                                     <CheckCircle2 size={12} /> 已入庫
-                                   </span>
-                                </div>
-                                <div className="pt-2 border-t border-[#F2F4F7] flex justify-between items-end">
-                                   <span className="text-xs font-bold text-[#9CA3AF]">進貨總量</span>
-                                   <span className="font-black text-[#1A1D21] text-lg">{totalQty} <span className="text-sm font-bold text-[#6B7280]">{unitText}</span></span>
-                                </div>
+                             <div key={order.id} className={`bg-[#FFFFFF] rounded-2xl border overflow-hidden transition-all shadow-sm ${expandedOrderId === order.id ? 'border-[#10B981]/40 shadow-md' : 'border-[#E5E8EB] opacity-90 hover:opacity-100'}`}>
+                                <button onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)} className="w-full p-4 flex flex-col gap-3 text-left hover:bg-[#F2F4F7]/30 transition-colors">
+                                  <div className="flex justify-between items-start">
+                                     <div>
+                                        <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] px-2 py-1 rounded-md mb-1.5 inline-block tracking-widest">{order.date}</span>
+                                        <span className="font-black text-[#1A1D21] text-base block">{order.id}</span>
+                                     </div>
+                                     <span className="text-xs font-bold text-[#10B981] bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-1 rounded-lg flex items-center gap-1 shrink-0">
+                                       <CheckCircle2 size={12} /> 已入庫
+                                     </span>
+                                  </div>
+                                  <div className="pt-2 border-t border-[#F2F4F7] flex justify-between items-end">
+                                     <span className="text-xs font-bold text-[#9CA3AF]">進貨總量</span>
+                                     <span className="font-black text-[#1A1D21] text-lg">{totalQty} <span className="text-sm font-bold text-[#6B7280]">{unitText}</span></span>
+                                  </div>
+                                </button>
+                                {expandedOrderId === order.id && order.items && order.items.length > 0 && (
+                                  <div className="border-t border-[#F2F4F7] bg-[#F9FAFB] px-4 py-3">
+                                    <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-2 flex justify-between px-1">
+                                      <span>商品名稱</span>
+                                      <div className="flex gap-6">
+                                        <span>數量</span>
+                                        <span>單價</span>
+                                        <span>小計</span>
+                                      </div>
+                                    </div>
+                                    {order.items.map((it, iIdx) => {
+                                      const itQty = parseFloat(it.orderQty || it.quantity) || 0;
+                                      const itPrice = parseFloat(it.price) || 0;
+                                      return (
+                                        <div key={iIdx} className="flex justify-between items-center py-2 px-1 border-b border-[#F2F4F7] last:border-0 text-sm">
+                                          <span className="font-bold text-[#1A1D21] flex-1 min-w-0 truncate">{it.name || '（未填）'}</span>
+                                          <div className="flex gap-4 items-center shrink-0 text-right">
+                                            <span className="w-14 font-black text-[#1A1D21]">{itQty} <span className="text-xs text-[#6B7280] font-bold">{it.unit || '件'}</span></span>
+                                            <span className="w-16 font-bold text-[#F05A42]">${itPrice}</span>
+                                            <span className="w-16 font-black text-[#111418]">${(itQty * itPrice).toLocaleString()}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#E5E8EB] px-1">
+                                      <span className="text-xs font-bold text-[#6B7280] uppercase tracking-widest">此單總金額</span>
+                                      <span className="font-black text-[#F05A42] text-lg">${(order.totalAmount || order.items.reduce((s, it) => s + ((parseFloat(it.orderQty || it.quantity) || 0) * (parseFloat(it.price) || 0)), 0)).toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                )}
                              </div>
                            );
                          })}
