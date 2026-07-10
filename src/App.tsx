@@ -20,7 +20,6 @@ import {
   ChevronRight,
   Layers,
   X,
-  Eye,
   Menu, 
   ArrowUpDown,
   Smartphone,
@@ -94,31 +93,9 @@ export default function App() {
   const [usersDb, setUsersDb] = useState([]);
   const [ordersDb, setOrdersDb] = useState([]);
   const [inventoryDb, setInventoryDb] = useState({});
-  const [productsDb, setProductsDb] = useState([]);
   const [systemOptions, setSystemOptions] = useState({ categories: [], units: [], reorderUnits: [], vendorOrder: [], trackingProducts: initialProducts, abnormalReasons: initialAbnormalReasons, compensationProducts: initialCompensationProducts }); 
   const [compensationsDb, setCompensationsDb] = useState([]); 
   const [expiryRecords, setExpiryRecords] = useState([]);
-
-  // 商品代號對照表 (從 YPX 商品庫同步)
-  const productCodeMap = useMemo(() => {
-    const map = {};
-    productsDb.forEach(p => {
-      if (p.code) { map[p.name] = p.code; map[p.id] = p.code; }
-    });
-    return map;
-  }, [productsDb]);
-
-  // 將代號注入所有訂單的 items 中（相容舊訂單）
-  const enrichedOrders = useMemo(() => {
-    if (Object.keys(productCodeMap).length === 0) return ordersDb;
-    return ordersDb.map(order => ({
-      ...order,
-      items: (order.items || []).map(item => ({
-        ...item,
-        code: item.code || productCodeMap[item.name] || productCodeMap[item.id] || ''
-      }))
-    }));
-  }, [ordersDb, productCodeMap]);
   
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState('login');
@@ -259,12 +236,7 @@ export default function App() {
       (error) => console.error("Error fetching options:", error)
     );
 
-    const unsubProducts = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'hotpot_products'), 
-      (snap) => setProductsDb(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      (error) => console.error("Error fetching products:", error)
-    );
-
-    return () => { unsubUsers(); unsubOrders(); unsubInv(); unsubCompensations(); unsubOptions(); unsubProducts(); };
+    return () => { unsubUsers(); unsubOrders(); unsubInv(); unsubCompensations(); unsubOptions(); };
   }, [fbUser]);
 
   const dynamicVendors = useMemo(() => {
@@ -570,20 +542,20 @@ export default function App() {
         <main className={`flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 lg:p-8 w-full mx-auto pb-40 ${viewMode === 'auto' ? 'max-w-7xl' : ''}`}>
           
           {/* 門市端視圖 */}
-          {currentView === 'store_dashboard' && <StoreDashboard currentUser={currentUser} vendors={dynamicVendors} orders={enrichedOrders} onSelectVendor={(v) => { setSelectedVendor(v); setCurrentView('store_vendor_detail'); }} />}
-          {currentView === 'store_abnormal' && <StoreAbnormalOverview currentUser={currentUser} orders={enrichedOrders} onResolveAbnormal={handleResolveAbnormal} />}
+          {currentView === 'store_dashboard' && <StoreDashboard currentUser={currentUser} vendors={dynamicVendors} orders={ordersDb} onSelectVendor={(v) => { setSelectedVendor(v); setCurrentView('store_vendor_detail'); }} />}
+          {currentView === 'store_abnormal' && <StoreAbnormalOverview currentUser={currentUser} orders={ordersDb} onResolveAbnormal={handleResolveAbnormal} />}
           {currentView === 'store_compensation' && <StoreCompensationOverview currentUser={currentUser} vendors={dynamicVendors} systemOptions={systemOptions} compensations={compensationsDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'store_expiry' && <StoreExpiryTracker currentUser={currentUser} products={trackingProducts} expiryRecords={expiryRecords} setExpiryRecords={setExpiryRecords} />}
-          {currentView === 'store_vendor_detail' && <StoreVendorDetail currentUser={currentUser} vendor={selectedVendor} orders={enrichedOrders} abnormalReasons={dynamicAbnormalReasons} onVerifySuccess={handleVerifySuccess} onSubmitAbnormal={handleSubmitAbnormalCloud} onResolveAbnormal={handleResolveAbnormal} onBack={() => { setSelectedVendor(null); setCurrentView('store_dashboard'); }} />}
+          {currentView === 'store_vendor_detail' && <StoreVendorDetail currentUser={currentUser} vendor={selectedVendor} orders={ordersDb} abnormalReasons={dynamicAbnormalReasons} onVerifySuccess={handleVerifySuccess} onSubmitAbnormal={handleSubmitAbnormalCloud} onResolveAbnormal={handleResolveAbnormal} onBack={() => { setSelectedVendor(null); setCurrentView('store_dashboard'); }} />}
 
           {/* 總部端視圖切換 */}
-          {currentView === 'admin_vendors' && <AdminVendorOverview orders={enrichedOrders} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
+          {currentView === 'admin_vendors' && <AdminVendorOverview orders={ordersDb} vendors={dynamicVendors} systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
           {currentView === 'admin_expiry' && <AdminExpiryOverview expiryRecords={expiryRecords} users={usersDb} />}
-          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={enrichedOrders} users={usersDb} />}
-          {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={enrichedOrders} />}
-          {currentView === 'admin_price_trends' && <AdminPriceTrends orders={enrichedOrders} users={usersDb} />}
+          {currentView === 'admin_product_comparison' && <AdminProductComparison orders={ordersDb} users={usersDb} />}
+          {currentView === 'admin_charts' && <AdminChartsOverview users={usersDb} orders={ordersDb} />}
+          {currentView === 'admin_price_trends' && <AdminPriceTrends orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_settings' && <AdminSettings systemOptions={systemOptions} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} onBack={() => setCurrentView('admin_vendors')} initialProducts={initialProducts} initialAbnormalReasons={initialAbnormalReasons} initialCompensationProducts={initialCompensationProducts} />}
-          {currentView === 'admin_abnormal' && <AdminAbnormalOverview orders={enrichedOrders} users={usersDb} />}
+          {currentView === 'admin_abnormal' && <AdminAbnormalOverview orders={ordersDb} users={usersDb} />}
           {currentView === 'admin_compensation' && <AdminCompensationOverview compensations={compensationsDb} users={usersDb} db={db} appId={appId} showAlert={showAlert} showConfirm={showConfirm} />}
 
         </main>
@@ -1002,7 +974,6 @@ function AdminSettings({ systemOptions, users, db, appId, showAlert, showConfirm
 // ==========================================
 function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
   const [expandedVendor, setExpandedVendor] = useState(null);
-  const [selectedReceivedOrder, setSelectedReceivedOrder] = useState(null);
 
   const storeOrders = useMemo(() => orders.filter(o => o.branchUsername === currentUser.username || o.branchName === currentUser.name), [currentUser, orders]);
 
@@ -1014,7 +985,27 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
   }, [vendors, storeOrders]);
 
   // 取得最近 20 筆已接收的單據，並依照廠商分類
-  const recentReceived = useMemo(() => storeOrders.filter(o => o.status === 'received').sort((a,b) => b.timestamp - a.timestamp).slice(0, 20), [storeOrders]);
+  const recentReceived = useMemo(() => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
+    return storeOrders.filter(o => {
+      if (o.status !== 'received') return false;
+      // 比對日期字串前綴是否為今天（格式如 2026/4/4 或 2026/04/04）
+      if (o.date) {
+        const parts = o.date.replace(/\s.*$/, '').split('/');
+        if (parts.length >= 3) {
+          const oDateStr = `${parseInt(parts[0])}/${parseInt(parts[1])}/${parseInt(parts[2])}`;
+          return oDateStr === todayStr;
+        }
+      }
+      // fallback: 用 timestamp 比對今天
+      if (o.timestamp) {
+        const oDate = new Date(o.timestamp);
+        return oDate.getFullYear() === now.getFullYear() && oDate.getMonth() === now.getMonth() && oDate.getDate() === now.getDate();
+      }
+      return false;
+    }).sort((a,b) => b.timestamp - a.timestamp);
+  }, [storeOrders]);
   
   const groupedReceivedOrders = useMemo(() => {
     const groups = {};
@@ -1072,7 +1063,7 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
       {Object.keys(groupedReceivedOrders).length > 0 && (
         <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <h3 className="text-xl font-black text-[#1A1D21] mb-5 flex items-center gap-2">
-            <CheckCircle2 className="text-[#10B981]" /> 最近已入庫紀錄 (依廠商分類)
+            <CheckCircle2 className="text-[#10B981]" /> 今日已入庫紀錄 (依廠商分類)
           </h3>
           <div className="space-y-4">
             {Object.entries(groupedReceivedOrders).map(([vName, vOrders]) => {
@@ -1105,7 +1096,7 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
                            const unitText = uniqueUnits.length === 1 ? uniqueUnits[0] : '件(等)';
 
                            return (
-                             <button key={order.id} onClick={() => setSelectedReceivedOrder(order)} className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 opacity-90 hover:opacity-100 hover:border-[#10B981]/40 hover:shadow-md transition-all shadow-sm text-left cursor-pointer active:scale-[0.98]">
+                             <div key={order.id} className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5E8EB] flex flex-col gap-3 opacity-90 hover:opacity-100 transition-opacity shadow-sm">
                                 <div className="flex justify-between items-start">
                                    <div>
                                       <span className="text-[10px] font-bold text-[#6B7280] bg-[#F2F4F7] px-2 py-1 rounded-md mb-1.5 inline-block tracking-widest">{order.date}</span>
@@ -1119,10 +1110,7 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
                                    <span className="text-xs font-bold text-[#9CA3AF]">進貨總量</span>
                                    <span className="font-black text-[#1A1D21] text-lg">{totalQty} <span className="text-sm font-bold text-[#6B7280]">{unitText}</span></span>
                                 </div>
-                                <div className="flex items-center justify-center text-[10px] font-bold text-[#9CA3AF] hover:text-[#10B981] transition-colors gap-1 pt-1">
-                                  <Eye size={12} /> 點擊查看明細
-                                </div>
-                             </button>
+                             </div>
                            );
                          })}
                        </div>
@@ -1134,82 +1122,12 @@ function StoreDashboard({ currentUser, vendors, orders, onSelectVendor }) {
           </div>
         </div>
       )}
-
-      {/* 已入庫訂單明細 Modal */}
-      {selectedReceivedOrder && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedReceivedOrder(null)}>
-          <div className="bg-white rounded-[2rem] w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="bg-[#1A1D21] text-white p-6 shrink-0">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest block mb-1">{selectedReceivedOrder.date}</span>
-                  <h3 className="text-xl font-black">{selectedReceivedOrder.id}</h3>
-                </div>
-                <button onClick={() => setSelectedReceivedOrder(null)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex items-center gap-3 mt-3">
-                <span className="text-xs font-bold text-[#10B981] bg-[#10B981]/20 px-3 py-1 rounded-lg flex items-center gap-1">
-                  <CheckCircle2 size={12} /> 已入庫
-                </span>
-                {selectedReceivedOrder.branchName && (
-                  <span className="text-xs font-bold text-[#9CA3AF]">門市：{selectedReceivedOrder.branchName}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Items List */}
-            <div className="flex-1 overflow-y-auto p-5">
-              <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest mb-3 flex px-2">
-                <span className="flex-1">商品名稱</span>
-                <span className="w-20 text-center">數量</span>
-                <span className="w-20 text-right">單價</span>
-                <span className="w-20 text-right">小計</span>
-              </div>
-              <div className="space-y-2">
-                {(selectedReceivedOrder.items || []).map((item, idx) => {
-                  const qty = parseFloat(item.orderQty || item.quantity) || 0;
-                  const price = parseFloat(item.price) || 0;
-                  const subtotal = qty * price;
-                  return (
-                    <div key={idx} className="flex items-center bg-[#F9FAFB] hover:bg-[#F2F4F7] rounded-xl px-3 py-3 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          {item.code && <span className="text-[9px] font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded tracking-widest shrink-0">{item.code}</span>}
-                          <span className="font-bold text-[#1A1D21] text-sm truncate">{item.name}</span>
-                        </div>
-                      </div>
-                      <span className="w-20 text-center font-black text-[#1A1D21] text-sm">{qty} <span className="text-[#9CA3AF] text-xs font-bold">{item.unit || '件'}</span></span>
-                      <span className="w-20 text-right font-bold text-[#F05A42] text-sm">{price > 0 ? `$${price}` : '-'}</span>
-                      <span className="w-20 text-right font-black text-[#1A1D21] text-sm">{subtotal > 0 ? `$${subtotal.toLocaleString()}` : '-'}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Footer Summary */}
-            <div className="border-t border-[#E5E8EB] bg-[#F9FAFB] p-5 shrink-0">
-              <div className="flex justify-between items-center">
-                <div>
-                  <span className="text-xs font-bold text-[#9CA3AF]">共 {(selectedReceivedOrder.items || []).length} 項商品</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest block mb-0.5">訂單總金額</span>
-                  <span className="font-black text-[#1A1D21] text-2xl">
-                    ${(selectedReceivedOrder.totalAmount || (selectedReceivedOrder.items || []).reduce((sum, it) => sum + (parseFloat(it.orderQty || it.quantity) || 0) * (parseFloat(it.price) || 0), 0)).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
+// ==========================================
+// 前臺：門市異常通報總覽 
 // ==========================================
 function StoreAbnormalOverview({ currentUser, orders, onResolveAbnormal }) {
   const abnormalOrders = orders.filter(o => (o.branchUsername === currentUser.username || o.branchName === currentUser.name) && o.status === 'abnormal').sort((a, b) => (b.abnormalTime || b.timestamp) - (a.abnormalTime || a.timestamp));
@@ -1547,7 +1465,7 @@ function StoreVendorDetail({ currentUser, vendor, orders, abnormalReasons, onVer
               <div className="space-y-3">
                 {order.items.map((item, idx) => (
                   <div key={idx} className="flex items-center text-sm pb-4 hover:bg-[#F2F4F7]/60 p-2.5 rounded-2xl transition-colors">
-                    <div className="flex-1 font-bold text-[#1A1D21] pl-2 text-base">{item.code && <span className="text-[10px] font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded-md tracking-widest mr-2">{item.code}</span>}{item.name}</div>
+                    <div className="flex-1 font-bold text-[#1A1D21] pl-2 text-base">{item.name}</div>
                     <div className="w-24 text-right font-black text-[#111418] text-lg pr-2">{item.orderQty || item.quantity} <span className="text-sm font-bold text-[#9CA3AF]">件</span></div>
                   </div>
                 ))}
@@ -2538,7 +2456,7 @@ function AdminStoreOrders({ store, orders, onBack, systemOptions, db, appId, sho
 
 function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ ...item, quantity: item.orderQty || item.quantity || 0 });
+  const [editData, setEditData] = useState({ ...item });
 
   const handleSave = () => {
     onSave(idx, editData);
@@ -2554,12 +2472,12 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
       <>
         {/* Desktop editing row */}
         <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
-          <td className="py-4 px-3 font-mono text-sm">{item.code ? <span className="font-black text-[#10B981] text-[11px]">{item.code}</span> : <span className="text-[#6B7280]">#{idx + 1}</span>}</td>
+          <td className="py-4 px-3 font-mono text-[#6B7280] text-sm">#{idx + 1}</td>
           <td className="py-4 px-3">
             <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]" />
           </td>
           <td className="py-4 px-3">
-            <input type="number" value={editData.quantity} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
+            <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-center outline-none focus:ring-2 focus:ring-[#F05A42]" />
           </td>
           <td className="py-4 px-3">
             <select value={editData.unit} onChange={e => setEditData({...editData, unit: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#F05A42]">
@@ -2573,7 +2491,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
             <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: e.target.value})} className="w-full border border-[#E5E8EB] rounded-lg px-3 py-2 text-right outline-none focus:ring-2 focus:ring-[#F05A42]" />
           </td>
           <td className="py-4 px-3 text-right font-black text-[#111418] text-lg">
-            ${((parseFloat(editData.quantity) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
+            ${((parseFloat(editData.quantity || editData.orderQty) || 0) * (parseFloat(editData.price) || 0)).toLocaleString()}
           </td>
           <td className="py-4 px-3 text-center">
             <button onClick={handleSave} className="text-[#10B981] hover:text-[#059669] font-black mr-3 active:scale-95 transition-all">儲存</button>
@@ -2598,7 +2516,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">數量</label>
-                  <input type="number" value={editData.quantity} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 text-center outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
+                  <input type="number" value={editData.quantity || editData.orderQty} onChange={e => setEditData({...editData, quantity: e.target.value})} className="w-full border border-[#E5E8EB] rounded-xl px-3 py-2.5 text-center outline-none focus:ring-2 focus:ring-[#F05A42] mt-1 text-sm font-bold" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-widest">單位</label>
@@ -2625,7 +2543,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
     <>
       {/* Desktop row */}
       <tr className="hover:bg-[#F2F4F7]/40 transition-colors group hidden sm:table-row">
-        <td className="py-4 px-3 font-mono text-sm">{item.code ? <span className="font-black text-[#10B981] bg-[#ECFDF5] border border-[#D1FAE5] px-2 py-1 rounded-lg tracking-widest text-[11px] not-italic">{item.code}</span> : <span className="text-[#9CA3AF]">#{idx + 1}</span>}</td>
+        <td className="py-4 px-3 font-mono text-[#9CA3AF] text-sm">#{idx + 1}</td>
         <td className="py-4 px-3 font-bold text-[#1A1D21] text-base">{item.name}</td>
         <td className="py-4 px-3 text-center font-black text-[#1A1D21] text-lg">{qty}</td>
         <td className="py-4 px-3 text-left font-bold text-[#6B7280]">{item.unit}</td>
@@ -2644,7 +2562,7 @@ function OrderItemRow({ item, idx, systemOptions, onSave, onRemove }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="font-mono text-[#9CA3AF] text-xs font-bold shrink-0">#{idx + 1}</span>
-                  <span className="font-bold text-[#1A1D21] text-[15px] truncate">{item.code && <span className="text-[10px] font-black text-[#10B981] mr-1">[{item.code}]</span>}{item.name || '（未填寫）'}</span>
+                  <span className="font-bold text-[#1A1D21] text-[15px] truncate">{item.name || '（未填寫）'}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="text-[#6B7280]"><span className="font-black text-[#1A1D21]">{qty}</span> {item.unit}</span>
@@ -2683,9 +2601,8 @@ function AdminOrderDetail({ order, systemOptions, db, appId, showAlert, showConf
       updatedItems[itemIdx] = {
          ...updatedItems[itemIdx],
          name: newRowData.name,
-         code: newRowData.code || updatedItems[itemIdx].code || '',
-         quantity: parseFloat(newRowData.quantity || newRowData.orderQty) || updatedItems[itemIdx].orderQty || 0,
-         orderQty: parseFloat(newRowData.quantity || newRowData.orderQty) || updatedItems[itemIdx].orderQty || 0,
+         quantity: parseFloat(newRowData.quantity) || 0,
+         orderQty: parseFloat(newRowData.quantity) || 0,
          unit: newRowData.unit,
          price: parseFloat(newRowData.price) || 0
       };
